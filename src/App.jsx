@@ -438,7 +438,7 @@ export default function App() {
       stock: Number(productFormData.stock) || 0,
       image: productFormData.image || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=600&q=80',
       description: productFormData.description,
-      is_available: Number(productFormData.stock) > 0 && productFormData.is_available
+      is_available: Number(productFormData.stock) > 0 
     };
 
     if (editingProduct) {
