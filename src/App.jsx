@@ -1802,7 +1802,7 @@ export default function App() {
         </div>
       )}
 
-      {/* PAYMENT MODAL */}
+     {/* PAYMENT MODAL */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl overflow-y-auto max-h-[92vh]">
@@ -1818,7 +1818,8 @@ export default function App() {
               </button>
             </div>
 
-            <div className="grid grid-cols-4 gap-2 my-4">
+            {/* Grid tombol pembayaran disesuaikan jumlah kolomnya jika Tunai disembunyikan untuk customer */}
+            <div className={`grid gap-2 my-4 ${currentRole === 'staff' ? 'grid-cols-4' : 'grid-cols-3'}`}>
               <button
                 onClick={() => setPaymentType('qris')}
                 className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-bold gap-1 transition ${
@@ -1830,17 +1831,22 @@ export default function App() {
                 <QrCode className="w-5 h-5 text-amber-600" />
                 QRIS
               </button>
-              <button
-                onClick={() => setPaymentType('cash')}
-                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-bold transition ${
-                  paymentType === 'cash'
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm'
-                    : 'border-stone-200 text-stone-600 hover:bg-stone-50'
-                }`}
-              >
-                <Banknote className="w-5 h-5 text-emerald-600" />
-                Tunai
-              </button>
+
+              {/* Opsi Tunai HANYA MUNCUL untuk Staff/Kasir */}
+              {currentRole === 'staff' && (
+                <button
+                  onClick={() => setPaymentType('cash')}
+                  className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-bold transition ${
+                    paymentType === 'cash'
+                      ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm'
+                      : 'border-stone-200 text-stone-600 hover:bg-stone-50'
+                  }`}
+                >
+                  <Banknote className="w-5 h-5 text-emerald-600" />
+                  Tunai
+                </button>
+              )}
+
               <button
                 onClick={() => setPaymentType('ewallet')}
                 className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-bold gap-1 transition ${
@@ -1892,7 +1898,8 @@ export default function App() {
                 </div>
               )}
 
-              {paymentType === 'cash' && (
+              {/* Form Tunai HANYA MUNCUL untuk Staff/Kasir */}
+              {currentRole === 'staff' && paymentType === 'cash' && (
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-bold text-stone-700 mb-1">
