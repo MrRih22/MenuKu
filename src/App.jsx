@@ -304,10 +304,10 @@ export default function App() {
     else if (paymentType === 'ewallet') finalPaymentLabel = `E-Wallet (${eWalletBrand})`;
     else if (paymentType === 'pay_at_cashier') finalPaymentLabel = 'Bayar di Kasir';
 
-    const orderPayload = {
+   const orderPayload = {
       order_code: generatedOrderId,
       table_no: selectedTable,
-      customer_name: customerName || 'Tamu',
+      cashier_name: activeCashier.name, // <--- Rekam nama kasir aktif
       items: cart,
       subtotal,
       tax: taxAmount,
@@ -501,7 +501,8 @@ export default function App() {
     const headers = [
       'ID Order', 
       'Waktu Transaksi', 
-      'Meja', 
+      'Meja',
+      'Nama Kasir',
       'Metode Bayar', 
       'Status Pesanan', 
       'Subtotal (Rp)', 
@@ -514,11 +515,16 @@ export default function App() {
 
     liveOrders.forEach(order => {
       const orderDate = order.created_at ? new Date(order.created_at).toLocaleString('id-ID') : '-';
+      
+      // Mengambil nama kasir dari data order jika tersimpan, atau fallback ke kasir aktif saat ini / Tamu Mandiri
+      const cashierName = order.cashier_name || activeCashier.name || 'Self-Order / Tamu';
+
       const rowData = [
         order.order_code,
         orderDate,
         order.table_no,
         order.customer_name || 'Tamu',
+        cashierName, // <--- Data Nama Kasir yang Melayani
         order.payment_method,
         order.status,
         order.subtotal || 0,
@@ -526,6 +532,7 @@ export default function App() {
         order.service_fee || 0,
         order.grand_total || 0
       ];
+      
       const formattedRow = rowData.map(item => `"${item}"`).join(separator);
       csvRows.push(formattedRow);
     });
