@@ -55,7 +55,7 @@ export default function App() {
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
 
-  const [customerName, setCustomerName] = useState('Pelanggan');
+  const [customerName, setCustomerName] = useState('');
   const [selectedTable, setSelectedTable] = useState('Meja 04');
   const tableList = ['Meja 01', 'Meja 02', 'Meja 03', 'Meja 04', 'Meja 05', 'Meja 06', 'VIP Room', 'Bawa Pulang (Take Away)'];
 
@@ -209,7 +209,7 @@ export default function App() {
   }, [cart]);
 
   const taxAmount = useMemo(() => Math.round(subtotal * 0.1), [subtotal]);
-  const serviceFee = useMemo(() => (subtotal > 0 ? 3000 : 0), [subtotal]);
+  const serviceFee = useMemo(() => (subtotal > 0 ? 1000 : 0), [subtotal]);
   const grandTotal = useMemo(() => subtotal + taxAmount + serviceFee, [subtotal, taxAmount, serviceFee]);
   const totalCartCount = useMemo(() => cart.reduce((t, i) => t + i.quantity, 0), [cart]);
 
@@ -307,11 +307,12 @@ export default function App() {
    const orderPayload = {
       order_code: generatedOrderId,
       table_no: selectedTable,
-      cashier_name: activeCashier.name, // <--- Rekam nama kasir aktif
+      customer_name: customerName || 'Pelanggan',
+      cashier_name: currentRole === 'staff' ? activeCashier.name : 'Self-Order / Tamu',
       items: cart,
       subtotal,
       tax: taxAmount,
-      service_fee: serviceFee,
+      service_fee: 1000,
       grand_total: grandTotal,
       payment_method: finalPaymentLabel,
       status: isCustomerOrder ? 'Menunggu Konfirmasi' : 'Selesai'
@@ -354,7 +355,7 @@ export default function App() {
         time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
         date: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
         table: selectedTable,
-        customerName: customerName || 'Tamu',
+        customerName: customerName || 'Pelanggan',
         cashier: activeCashier.name,
         items: [...cart],
         subtotal,
@@ -381,7 +382,10 @@ export default function App() {
   const handleUpdateOrderStatus = async (order, newStatus) => {
     const { error } = await supabase
       .from('orders')
-      .update({ status: newStatus })
+      .update({ 
+        status: newStatus,
+        cashier_name: activeCashier.name
+      })
       .eq('id', order.id);
 
     if (error) {
@@ -501,8 +505,9 @@ export default function App() {
     const headers = [
       'ID Order', 
       'Waktu Transaksi', 
-      'Meja',
-      'Nama Kasir',
+      'Meja', 
+      'Nama Customer',
+      'Nama Kasir / Petugas',
       'Metode Bayar', 
       'Status Pesanan', 
       'Subtotal (Rp)', 
@@ -515,16 +520,14 @@ export default function App() {
 
     liveOrders.forEach(order => {
       const orderDate = order.created_at ? new Date(order.created_at).toLocaleString('id-ID') : '-';
-      
-      // Mengambil nama kasir dari data order jika tersimpan, atau fallback ke kasir aktif saat ini / Tamu Mandiri
-      const cashierName = order.cashier_name || activeCashier.name || 'Self-Order / Tamu';
+      const cashierName = order.cashier_name || activeCashier.name;
 
       const rowData = [
         order.order_code,
         orderDate,
         order.table_no,
-        order.customer_name || 'Tamu',
-        cashierName, // <--- Data Nama Kasir yang Melayani
+        order.customer_name || 'Pelanggan',
+        cashierName,
         order.payment_method,
         order.status,
         order.subtotal || 0,
@@ -926,6 +929,17 @@ export default function App() {
                       )}
                     </div>
 
+                    <div className="px-4 pt-3 pb-1 border-b border-slate-800/80">
+                      <label className="text-[11px] font-semibold text-slate-400 block mb-1">Nama Pemesan / Customer:</label>
+                      <input
+                        type="text"
+                        placeholder="Masukkan nama customer..."
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        className="w-full text-xs bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-amber-500"
+                      />
+                    </div>
+
                     <div className="flex-1 overflow-y-auto p-4 space-y-3">
                       {cart.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
@@ -1051,7 +1065,6 @@ export default function App() {
               </div>
             )}
 
-            {/* VIEW: ANTREAN PESANAN MASUK (4 TAHAPAN STATUS) */}
             {currentRole === 'staff' && staffTab === 'incoming' && (
               <div className="space-y-4">
                 <div className="bg-slate-950 p-4 sm:p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-sm">
@@ -1094,7 +1107,7 @@ export default function App() {
                           <div className="flex justify-between items-start pb-3 border-b border-slate-800">
                             <div>
                               <span className="font-black text-slate-100 text-sm">{ord.order_code}</span>
-                              <span className="block text-xs font-medium text-slate-400 mt-0.5">{ord.table_no} &bull; {ord.customer_name}</span>
+                              <span className="block text-xs font-medium text-slate-400 mt-0.5">{ord.table_no} &bull; {ord.customer_name || 'Pelanggan'}</span>
                             </div>
                             <span
                               className={`text-[10px] font-bold px-2.5 py-1 rounded-md border ${
@@ -1130,7 +1143,6 @@ export default function App() {
                             <span className="text-amber-400 text-sm">{formatRupiah(ord.grand_total)}</span>
                           </div>
 
-                          {/* 4 Tahapan Status Button Trigger */}
                           {ord.status === 'Menunggu Konfirmasi' && (
                             <button
                               onClick={() => handleUpdateOrderStatus(ord, 'Sedang Disiapkan')}
@@ -1444,7 +1456,7 @@ export default function App() {
                       <thead className="bg-slate-900 text-slate-400 font-bold border-b border-slate-800 uppercase">
                         <tr>
                           <th className="p-3.5">ID Order</th>
-                          <th className="p-3.5">Meja / Tamu</th>
+                          <th className="p-3.5">Meja / Customer</th>
                           <th className="p-3.5">Metode Bayar</th>
                           <th className="p-3.5">Status</th>
                           <th className="p-3.5 text-right">Grand Total</th>
@@ -1454,7 +1466,7 @@ export default function App() {
                         {liveOrders.map((item) => (
                           <tr key={item.id} className="hover:bg-slate-900/50">
                             <td className="p-3.5 font-bold text-slate-100">{item.order_code}</td>
-                            <td className="p-3.5 font-semibold text-slate-200">{item.table_no} &bull; {item.customer_name}</td>
+                            <td className="p-3.5 font-semibold text-slate-200">{item.table_no} &bull; {item.customer_name || 'Pelanggan'}</td>
                             <td className="p-3.5">
                               <span className="bg-slate-900 text-slate-300 border border-slate-800 px-2.5 py-1 rounded-md text-[11px] font-semibold">
                                 {item.payment_method}
@@ -1535,18 +1547,16 @@ export default function App() {
               </button>
             </div>
 
-            {currentRole === 'customer' && (
-              <div className="pt-3">
-                <label className="text-[11px] font-semibold text-slate-400 block mb-1">Nama Pemesan / Tamu:</label>
-                <input
-                  type="text"
-                  placeholder="Masukkan nama Anda..."
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full text-xs bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 outline-none focus:border-amber-500"
-                />
-              </div>
-            )}
+            <div className="pt-2 pb-1">
+              <label className="text-[11px] font-semibold text-slate-400 block mb-1">Nama Pemesan / Customer:</label>
+              <input
+                type="text"
+                placeholder="Masukkan nama customer..."
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="w-full text-xs bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-slate-200 outline-none focus:border-amber-500"
+              />
+            </div>
 
             <div className="overflow-y-auto py-3 space-y-2.5 flex-1">
               {cart.map((item) => (
@@ -2137,7 +2147,6 @@ export default function App() {
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
     <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-5 sm:p-6 shadow-2xl my-auto max-h-[92vh] flex flex-col">
       
-      {/* Tombol Tutup (Disembunyikan saat dicetak) */}
       <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0 no-print">
         <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
           <CheckCircle2 className="w-5 h-5" />
@@ -2148,7 +2157,6 @@ export default function App() {
         </button>
       </div>
 
-      {/* AREA UTAMA STRUK YANG SIAP DICETAK */}
       <div 
         id="printable-receipt" 
         className="my-4 bg-white text-slate-900 p-5 rounded-2xl border border-dashed border-slate-300 font-mono text-xs space-y-2.5 overflow-y-auto flex-1 shadow-sm"
@@ -2165,10 +2173,13 @@ export default function App() {
         </div>
         <div className="flex justify-between text-[10px] text-slate-600 pb-1">
           <span>Meja: <strong className="text-slate-900">{lastProcessedOrder.table}</strong></span>
+          <span>Customer: <strong className="text-slate-900">{lastProcessedOrder.customerName}</strong></span>
+        </div>
+        <div className="flex justify-between text-[10px] text-slate-600 pb-2 border-b border-dashed border-slate-200">
           <span>Kasir: <strong className="text-slate-900">{lastProcessedOrder.cashier}</strong></span>
         </div>
 
-        <div className="border-t border-dashed border-slate-300 pt-2 space-y-1.5">
+        <div className="pt-1 space-y-1.5">
           {lastProcessedOrder.items.map((item, idx) => (
             <div key={idx} className="flex justify-between text-[11px]">
               <div>
@@ -2224,7 +2235,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Tombol Aksi Bawah (Disembunyikan saat dicetak dengan kelas no-print) */}
       <div className="grid grid-cols-2 gap-2 shrink-0 no-print">
         <button
           onClick={() => window.print()}
