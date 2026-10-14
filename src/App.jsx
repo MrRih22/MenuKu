@@ -1069,7 +1069,7 @@ export default function App() {
               <div className="space-y-4">
                 <div className="bg-slate-950 p-4 sm:p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-sm">
                   <div>
-                    <h2 className="text-sm sm:text-base font-bold text-slate-100">Antrean Pesanan Masuk (4 Tahapan)</h2>
+                    <h2 className="text-sm sm:text-base font-bold text-slate-100">Antrean Pesanan Masuk</h2>
                     <p className="text-xs text-slate-400 mt-0.5">
                       Kasir Aktif: <strong className="text-amber-400">{activeCashier.name}</strong>
                     </p>
