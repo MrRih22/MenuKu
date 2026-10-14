@@ -275,6 +275,29 @@ export default function App() {
   const handleCheckoutSuccess = async (isCustomerOrder = false) => {
     if (cart.length === 0) return;
 
+    // --- VALIDASI KONKURENSI STOK TERAKHIR KE SUPABASE ---
+    for (const cartItem of cart) {
+      const { data: latestMenu, error: fetchError } = await supabase
+        .from('menus')
+        .select('stock, name, is_available')
+        .eq('id', cartItem.id)
+        .single();
+
+      if (fetchError || !latestMenu) {
+        alert(`Gagal memeriksa ketersediaan menu ${cartItem.name}. Silakan coba lagi.`);
+        return;
+      }
+
+      if (!latestMenu.is_available || latestMenu.stock < cartItem.quantity) {
+        alert(`Mohon maaf, stok untuk menu "${latestMenu.name}" baru saja habis atau tidak mencukupi (sisa stok: ${latestMenu.stock}). Keranjang akan disesuaikan.`);
+        // Refresh menu agar sesuai dengan database
+        const { data: refreshedMenus } = await supabase.from('menus').select('*').order('name');
+        if (refreshedMenus) setMenuItems(refreshedMenus);
+        return; // Batalkan proses checkout
+      }
+    }
+    // ----------------------------------------------------
+
     const generatedOrderId = `MK-${Math.floor(10000 + Math.random() * 90000)}`;
 
     let finalPaymentLabel = 'Tunai';
