@@ -25,7 +25,6 @@ import {
   SlidersHorizontal,
   ChevronUp,
   AlertCircle,
-  Sparkles,
   Lock,
   LogOut, 
   Package,
@@ -33,10 +32,10 @@ import {
   Smartphone,
   Bell,
   Check,
-  UserCheck
+  UserCheck,
+  Download
 } from 'lucide-react';
 
-// DAFTAR 5 KASIR RESMI DENGAN PIN MASING-MASING
 const CASHIERS_LIST = [
   { id: 'c-1', name: 'Archibald Ciba Arrasyid', pin: '1111', role: 'Staff' },
   { id: 'c-2', name: 'Shabha Khalisha Angky', pin: '2222', role: 'Staff' },
@@ -45,34 +44,28 @@ const CASHIERS_LIST = [
   { id: 'c-5', name: 'Afshika Hunain Arbinta', pin: '5555', role: 'Staff' },
 ];
 
-
 export default function App() {
   const [currentRole, setCurrentRole] = useState('customer');
   const [staffTab, setStaffTab] = useState('incoming');
 
-  // Multi-Kasir State
   const [selectedCashierLogin, setSelectedCashierLogin] = useState(CASHIERS_LIST[0]);
   const [activeCashier, setActiveCashier] = useState(CASHIERS_LIST[0]);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
 
-  // Customer Info State
   const [customerName, setCustomerName] = useState('Pelanggan');
   const [selectedTable, setSelectedTable] = useState('Meja 04');
   const tableList = ['Meja 01', 'Meja 02', 'Meja 03', 'Meja 04', 'Meja 05', 'Meja 06', 'VIP Room', 'Bawa Pulang (Take Away)'];
 
-  // Supabase Data State
   const [menuItems, setMenuItems] = useState([]);
   const [liveOrders, setLiveOrders] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Filter & Cart State
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState([]);
 
-  // Modals State
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isSplitBillModalOpen, setIsSplitBillModalOpen] = useState(false);
@@ -80,20 +73,17 @@ export default function App() {
   const [isMenuFormModalOpen, setIsMenuFormModalOpen] = useState(false);
   const [isMergeTableModalOpen, setIsMergeTableModalOpen] = useState(false);
   const [isCustomerOrderDoneModalOpen, setIsCustomerOrderDoneModalOpen] = useState(false);
-  const [isEditShiftModalOpen, setIsEditShiftModalOpen] = useState(false); // Modal Pengaturan Shift
+  const [isEditShiftModalOpen, setIsEditShiftModalOpen] = useState(false);
 
-  // Split Bill State
   const [splitMethod, setSplitMethod] = useState('equal');
   const [splitPersons, setSplitPersons] = useState(2);
 
-  // Payment Form State
   const [paymentType, setPaymentType] = useState('cash');
   const [cashTendered, setCashTendered] = useState('');
   const [eWalletBrand, setEWalletBrand] = useState('GoPay');
   const [qrisTimer, setQrisTimer] = useState(180);
   const [lastProcessedOrder, setLastProcessedOrder] = useState(null);
 
-  // Menu Form CRUD State
   const [editingProduct, setEditingProduct] = useState(null);
   const [productFormData, setProductFormData] = useState({
     name: '',
@@ -105,7 +95,6 @@ export default function App() {
     is_available: true
   });
 
-  // Shift Register State (Diperbarui dengan Shift 1 & Shift 2 serta Expected Cash dinamis)
   const [shiftData, setShiftData] = useState({
     isOpen: true,
     shiftName: 'Shift 1 (Jam 08:00 Pagi)',
@@ -140,7 +129,26 @@ export default function App() {
     setIsEditShiftModalOpen(false);
   };
 
-  // Fetch Data & Supabase Realtime Subscription
+  useEffect(() => {
+    const checkSession = () => {
+      const savedSession = localStorage.getItem('menuku_staff_session');
+      if (savedSession) {
+        try {
+          const sessionData = JSON.parse(savedSession);
+          const currentTime = new Date().getTime();
+          if (currentTime - sessionData.loginTime < 12 * 60 * 60 * 1000) {
+            setActiveCashier(sessionData.cashier);
+            setSelectedCashierLogin(sessionData.cashier);
+            setCurrentRole('staff');
+          } else {
+            localStorage.removeItem('menuku_staff_session');
+          }
+        } catch (error) { console.error(error); }
+      }
+    };
+    checkSession();
+  }, []);
+
   useEffect(() => {
     const fetchMenus = async () => {
       const { data, error } = await supabase.from('menus').select('*').order('name');
@@ -232,7 +240,6 @@ export default function App() {
 
   const handleAddToCart = (item) => {
     if (!item.is_available || item.stock <= 0) return;
-
     setCart((prevCart) => {
       const existing = prevCart.find((c) => c.id === item.id);
       if (existing) {
@@ -265,7 +272,6 @@ export default function App() {
     );
   };
 
-  // Kirim Pesanan (Pelanggan atau Transaksi Kasir Langsung)
   const handleCheckoutSuccess = async (isCustomerOrder = false) => {
     if (cart.length === 0) return;
 
@@ -376,27 +382,28 @@ export default function App() {
     }
   };
 
-  // Verifikasi PIN Multi-Kasir
-  const handleVerifyStaffPin = (e) => {
-    e.preventDefault();
-    const matchedCashier = CASHIERS_LIST.find(
-      (c) => c.id === selectedCashierLogin.id && c.pin === pinInput.trim()
-    ) || CASHIERS_LIST.find((c) => c.pin === pinInput.trim());
-
-    if (matchedCashier) {
-      setActiveCashier(matchedCashier);
+  const handleStrictLogin = (e) => {
+    if (e) e.preventDefault();
+    if (pinInput.trim() === selectedCashierLogin.pin) {
+      setActiveCashier(selectedCashierLogin);
       setCurrentRole('staff');
       setIsLoginModalOpen(false);
       setPinInput('');
       setPinError('');
+      localStorage.setItem('menuku_staff_session', JSON.stringify({ 
+        cashier: selectedCashierLogin, 
+        loginTime: new Date().getTime() 
+      }));
     } else {
-      setPinError(`PIN salah! Masukkan 4 digit PIN untuk ${selectedCashierLogin.name}`);
+      setPinError(`Otorisasi Gagal: PIN untuk ${selectedCashierLogin.name.split(' ')[0]} tidak valid!`);
+      setPinInput(''); 
     }
   };
 
   const handleLogoutToCustomer = () => {
     setCurrentRole('customer');
     setStaffTab('pos');
+    localStorage.removeItem('menuku_staff_session');
   };
 
   const handleOpenNewMenuModal = () => {
@@ -463,51 +470,100 @@ export default function App() {
       .eq('id', prod.id);
   };
 
+  const handleExportCSV = () => {
+    if (liveOrders.length === 0) {
+      alert('Belum ada data laporan omzet yang bisa di-ekspor.');
+      return;
+    }
+
+    const separator = ';';
+    const headers = [
+      'ID Order', 
+      'Waktu Transaksi', 
+      'Meja', 
+      'Nama Tamu', 
+      'Metode Bayar', 
+      'Status Pesanan', 
+      'Subtotal (Rp)', 
+      'Pajak PB1 (Rp)', 
+      'Layanan (Rp)', 
+      'Grand Total (Rp)'
+    ];
+
+    const csvRows = [headers.join(separator)];
+
+    liveOrders.forEach(order => {
+      const orderDate = order.created_at ? new Date(order.created_at).toLocaleString('id-ID') : '-';
+      const rowData = [
+        order.order_code,
+        orderDate,
+        order.table_no,
+        order.customer_name || 'Tamu',
+        order.payment_method,
+        order.status,
+        order.subtotal || 0,
+        order.tax || 0,
+        order.service_fee || 0,
+        order.grand_total || 0
+      ];
+      const formattedRow = rowData.map(item => `"${item}"`).join(separator);
+      csvRows.push(formattedRow);
+    });
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Laporan_Omzet_MenuKu_${new Date().toLocaleDateString('id-ID').replace(/\//g, '-')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="min-h-screen bg-stone-100 text-stone-800 flex flex-col font-sans selection:bg-amber-500 selection:text-white">
-      {/* Top Application Bar */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-stone-200 shadow-sm transition-all">
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950">
+      {/* Top Application Bar - Desain Elegan Mewah */}
+      <header className="sticky top-0 z-40 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-3">
-            {/* Brand Logo & Role Indicator */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
-                <UtensilsCrossed className="w-6 h-6" />
+          <div className="flex items-center justify-between h-18 gap-3 py-3">
+            <div className="flex items-center gap-3.5">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 text-slate-950 flex items-center justify-center shadow-md shadow-amber-500/10 font-black">
+                <UtensilsCrossed className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xl font-black tracking-tight text-stone-900">
-                    Menu<span className="text-amber-600">Ku   </span>
+                  <span className="text-xl font-bold tracking-tight text-white font-serif">
+                    Menu<span className="text-amber-500 font-sans font-black">Ku</span>
                   </span>
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                    className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase tracking-widest ${
                       currentRole === 'staff'
-                        ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                        : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                        : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                     }`}
                   >
-                    {currentRole === 'staff' ? `POS: ${activeCashier.name}` : 'Self-Order Tamu'}
+                    {currentRole === 'staff' ? `POS • ${activeCashier.name}` : 'Self-Order Tamu'}
                   </span>
                 </div>
-                <p className="text-[11px] text-stone-500 hidden sm:block">
+                <p className="text-[11px] text-slate-400 hidden sm:block tracking-wide">
                   {currentRole === 'staff'
-                    ? 'Kepuasan Pelanggan Adalah Prioritas Utama'
-                    : 'Kepuasan Anda Adalah Prioritas Kami '}
+                    ? 'Executive Point of Sales Management System'
+                    : 'Exclusive Digital Dining Experience'}
                 </p>
               </div>
             </div>
 
-            {/* Table Selector */}
-            <div className="flex items-center gap-2">
-              <div className="flex items-center bg-stone-100 rounded-xl px-2.5 py-1.5 border border-stone-200">
-                <Users className="w-3.5 h-3.5 text-stone-500 mr-1.5 shrink-0" />
+            <div className="flex items-center gap-2.5">
+              <div className="flex items-center bg-slate-900 rounded-xl px-3 py-1.5 border border-slate-800 shadow-inner">
+                <Users className="w-3.5 h-3.5 text-amber-400 mr-2 shrink-0" />
                 <select
                   value={selectedTable}
                   onChange={(e) => setSelectedTable(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-stone-800 outline-none cursor-pointer"
+                  className="bg-transparent text-xs font-semibold text-slate-200 outline-none cursor-pointer"
                 >
                   {tableList.map((tbl) => (
-                    <option key={tbl} value={tbl}>{tbl}</option>
+                    <option key={tbl} value={tbl} className="bg-slate-900 text-slate-200">{tbl}</option>
                   ))}
                 </select>
               </div>
@@ -515,39 +571,38 @@ export default function App() {
               {currentRole === 'staff' && staffTab === 'pos' && (
                 <button
                   onClick={() => setIsMergeTableModalOpen(true)}
-                  className="hidden md:flex items-center gap-1 text-[11px] font-bold text-stone-600 bg-stone-100 hover:bg-stone-200 px-2.5 py-1.5 rounded-xl border border-stone-200 transition"
+                  className="hidden md:flex items-center gap-1.5 text-xs font-semibold text-slate-300 bg-slate-900 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-800 transition shadow-sm"
                   title="Gabung Meja"
                 >
-                  <Layers3 className="w-3.5 h-3.5 text-stone-500" />
+                  <Layers3 className="w-3.5 h-3.5 text-amber-400" />
                   <span>Gabung</span>
                 </button>
               )}
             </div>
 
-            {/* Access Switcher */}
             <div className="flex items-center gap-2">
               {currentRole === 'customer' ? (
                 <button
                   onClick={() => setIsLoginModalOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-stone-900 text-white hover:bg-stone-800 active:scale-95 transition shadow-sm"
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-amber-500 text-slate-950 hover:bg-amber-400 active:scale-95 transition shadow-md shadow-amber-500/20"
                 >
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="hidden sm:inline">Login</span>
-                  <span className="sm:hidden">Kasir</span>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Staff Login</span>
+                  <span className="sm:hidden">Login</span>
                 </button>
               ) : (
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <button
                     onClick={() => setIsLoginModalOpen(true)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold bg-stone-100 hover:bg-stone-200 text-stone-700 transition"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 transition"
                     title="Ganti Kasir"
                   >
-                    <UserCheck className="w-3.5 h-3.5 text-amber-600" />
+                    <UserCheck className="w-3.5 h-3.5 text-amber-400" />
                     <span className="hidden sm:inline">Ganti Kasir</span>
                   </button>
                   <button
                     onClick={handleLogoutToCustomer}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 active:scale-95 transition"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 active:scale-95 transition"
                     title="Keluar ke Mode Pelanggan"
                   >
                     <LogOut className="w-3.5 h-3.5" />
@@ -561,13 +616,13 @@ export default function App() {
 
         {/* Staff Sub-Navigation Bar */}
         {currentRole === 'staff' && (
-          <div className="bg-stone-900 text-white border-t border-stone-800">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between overflow-x-auto scrollbar-none py-1.5">
+          <div className="bg-slate-950 border-t border-slate-800/80 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-7xl mx-auto flex items-center justify-between overflow-x-auto scrollbar-none py-2">
               <div className="flex items-center gap-1 sm:gap-2">
                 <button
                   onClick={() => setStaffTab('incoming')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-                    staffTab === 'incoming' ? 'bg-amber-500 text-white shadow-sm' : 'text-stone-300 hover:bg-stone-800'
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                    staffTab === 'incoming' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
                   }`}
                 >
                   <Bell className="w-3.5 h-3.5" />
@@ -581,8 +636,8 @@ export default function App() {
 
                 <button
                   onClick={() => setStaffTab('pos')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-                    staffTab === 'pos' ? 'bg-amber-500 text-white shadow-sm' : 'text-stone-300 hover:bg-stone-800'
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                    staffTab === 'pos' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
                   }`}
                 >
                   <UtensilsCrossed className="w-3.5 h-3.5" />
@@ -591,8 +646,8 @@ export default function App() {
 
                 <button
                   onClick={() => setStaffTab('inventory')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-                    staffTab === 'inventory' ? 'bg-amber-500 text-white shadow-sm' : 'text-stone-300 hover:bg-stone-800'
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                    staffTab === 'inventory' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
                   }`}
                 >
                   <Package className="w-3.5 h-3.5" />
@@ -601,8 +656,8 @@ export default function App() {
 
                 <button
                   onClick={() => setStaffTab('shift')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-                    staffTab === 'shift' ? 'bg-amber-500 text-white shadow-sm' : 'text-stone-300 hover:bg-stone-800'
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                    staffTab === 'shift' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
                   }`}
                 >
                   <Clock className="w-3.5 h-3.5" />
@@ -611,8 +666,8 @@ export default function App() {
 
                 <button
                   onClick={() => setStaffTab('reports')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap ${
-                    staffTab === 'reports' ? 'bg-amber-500 text-white shadow-sm' : 'text-stone-300 hover:bg-stone-800'
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                    staffTab === 'reports' ? 'bg-amber-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
                   }`}
                 >
                   <TrendingUp className="w-3.5 h-3.5" />
@@ -620,10 +675,10 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="hidden md:flex items-center text-[11px] text-stone-400 gap-2">
-                <span>Operator: <strong className="text-amber-400">{activeCashier.name}</strong></span>
-                <span>&bull;</span>
-                <span>Status: <strong className="text-emerald-400">Shift Aktif</strong></span>
+              <div className="hidden md:flex items-center text-[11px] text-slate-400 gap-2.5">
+                <span>Operator: <strong className="text-amber-400 font-semibold">{activeCashier.name}</strong></span>
+                <span className="text-slate-700">&bull;</span>
+                <span>Sistem: <strong className="text-emerald-400 font-semibold">Online</strong></span>
               </div>
             </div>
           </div>
@@ -631,11 +686,11 @@ export default function App() {
       </header>
 
       {/* Main Layout */}
-      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 flex-1 flex flex-col">
+      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-6 flex-1 flex flex-col">
         {isLoading ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-20 text-stone-400">
-            <div className="w-8 h-8 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-            <p className="text-xs font-bold">Memuat Katalog Menu...</p>
+          <div className="flex-1 flex flex-col items-center justify-center py-24 text-slate-500">
+            <div className="w-9 h-9 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+            <p className="text-xs font-medium tracking-wide">Memuat Sistem MenuKu...</p>
           </div>
         ) : (
           <>
@@ -645,41 +700,41 @@ export default function App() {
                 {/* Catalog Panel */}
                 <div className="flex-1 flex flex-col min-w-0">
                   {currentRole === 'customer' && (
-                    <div className="bg-gradient-to-r from-amber-500 to-amber-600 rounded-2xl p-4 sm:p-5 text-white shadow-sm mb-5 flex items-center justify-between">
+                    <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-slate-900 rounded-2xl p-5 sm:p-6 text-white shadow-xl mb-6 flex items-center justify-between border border-amber-500/20">
                       <div>
-                        <h2 className="text-base sm:text-lg font-black tracking-tight">Selamat Datang di MenuKu! 👋</h2>
-                        <p className="text-xs sm:text-sm text-amber-100 mt-0.5">
-                          Pemesanan untuk <strong className="text-white underline">{selectedTable}</strong>. Pesanan langsung masuk ke kasir & dapur.
+                        <h2 className="text-base sm:text-lg font-bold tracking-tight font-serif">Selamat Datang di MenuKu</h2>
+                        <p className="text-xs sm:text-sm text-amber-100/90 mt-1 font-light">
+                          Pemesanan meja <strong className="text-amber-300 font-semibold underline">{selectedTable}</strong>. Pesanan otomatis terkirim ke dapur
                         </p>
                       </div>
                       <div className="hidden sm:block text-right">
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-amber-200 block">Pemberitahuan</span>
-                        <span className="text-xs font-semibold">Tersedia Pembayaran QRIS & Kasir</span>
+                        <span className="text-[10px] uppercase font-bold tracking-widest text-amber-300 block">Layanan Meja</span>
+                        <span className="text-xs font-medium text-slate-200">Pembayaran Digital & Pembayaran Kasir</span>
                       </div>
                     </div>
                   )}
 
                   {/* Filter & Search Controls */}
-                  <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-stone-200 shadow-sm mb-5 space-y-3">
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-sm mb-5 space-y-3">
                     <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
                       <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
                         {['All', 'Makanan', 'Minuman'].map((cat) => (
                           <button
                             key={cat}
                             onClick={() => setSelectedCategory(cat)}
-                            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition whitespace-nowrap ${
+                            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition whitespace-nowrap ${
                               selectedCategory === cat
-                                ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/30'
-                                : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
+                                ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/15'
+                                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
                             }`}
                           >
-                            {cat === 'All' && <Layers className="w-4 h-4" />}
-                            {cat === 'Makanan' && <UtensilsCrossed className="w-4 h-4" />}
-                            {cat === 'Minuman' && <Coffee className="w-4 h-4" />}
+                            {cat === 'All' && <Layers className="w-3.5 h-3.5" />}
+                            {cat === 'Makanan' && <UtensilsCrossed className="w-3.5 h-3.5" />}
+                            {cat === 'Minuman' && <Coffee className="w-3.5 h-3.5" />}
                             <span>{cat}</span>
                             <span
-                              className={`ml-1 text-[10px] px-1.5 py-0.2 rounded-full ${
-                                selectedCategory === cat ? 'bg-amber-600 text-white' : 'bg-stone-200 text-stone-700'
+                              className={`ml-1 text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                                selectedCategory === cat ? 'bg-slate-950/20 text-slate-950' : 'bg-slate-800 text-slate-300'
                               }`}
                             >
                               {cat === 'All'
@@ -691,18 +746,18 @@ export default function App() {
                       </div>
 
                       <div className="relative w-full sm:w-64">
-                        <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                         <input
                           type="text"
-                          placeholder="Cari hidangan atau minuman..."
+                          placeholder="Cari menu andalan..."
                           value={searchQuery}
                           onChange={(e) => setSearchQuery(e.target.value)}
-                          className="w-full bg-stone-100 border border-stone-200 rounded-xl pl-9 pr-8 py-2 text-xs sm:text-sm text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 transition"
+                          className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-8 py-2 text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 transition"
                         />
                         {searchQuery && (
                           <button
                             onClick={() => setSearchQuery('')}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600"
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>
@@ -713,13 +768,13 @@ export default function App() {
 
                   {/* Products Grid */}
                   {filteredProducts.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-stone-200 p-12 text-center flex flex-col items-center justify-center flex-1">
-                      <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-500 flex items-center justify-center mb-3">
-                        <Search className="w-8 h-8" />
+                    <div className="bg-slate-950 rounded-2xl border border-slate-800 p-12 text-center flex flex-col items-center justify-center flex-1">
+                      <div className="w-14 h-14 rounded-2xl bg-slate-900 text-slate-500 flex items-center justify-center mb-3 border border-slate-800">
+                        <Search className="w-6 h-6" />
                       </div>
-                      <h3 className="text-base font-bold text-stone-800">Menu tidak ditemukan</h3>
-                      <p className="text-xs text-stone-500 mt-1 max-w-xs">
-                        Tidak ada menu yang sesuai dengan "{searchQuery}". Coba ubah kata kunci pencarian.
+                      <h3 className="text-sm font-bold text-slate-200">Menu Tidak Ditemukan</h3>
+                      <p className="text-xs text-slate-400 mt-1 max-w-xs">
+                        Tidak ada hidangan yang cocok dengan kata kunci "{searchQuery}".
                       </p>
                     </div>
                   ) : (
@@ -731,76 +786,76 @@ export default function App() {
                         return (
                           <div
                             key={item.id}
-                            className={`group bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col justify-between ${
-                              isSoldOut ? 'opacity-65 bg-stone-50' : ''
+                            className={`group bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-md hover:border-slate-700 transition flex flex-col justify-between ${
+                              isSoldOut ? 'opacity-60 bg-slate-900/40' : ''
                             }`}
                           >
-                            <div className="relative h-40 w-full overflow-hidden bg-stone-100">
+                            <div className="relative h-40 w-full overflow-hidden bg-slate-900">
                               <img
                                 src={item.image}
                                 alt={item.name}
                                 className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
                                 loading="lazy"
                               />
-                              <span className="absolute top-2.5 left-2.5 bg-stone-900/80 backdrop-blur text-white text-[10px] font-semibold px-2 py-0.5 rounded-md flex items-center gap-1">
-                                {item.category === 'Makanan' ? <UtensilsCrossed className="w-3 h-3" /> : <Coffee className="w-3 h-3" />}
+                              <span className="absolute top-2.5 left-2.5 bg-slate-950/80 backdrop-blur-md text-slate-200 text-[10px] font-semibold px-2.5 py-1 rounded-lg border border-slate-800 flex items-center gap-1">
+                                {item.category === 'Makanan' ? <UtensilsCrossed className="w-3 h-3 text-amber-400" /> : <Coffee className="w-3 h-3 text-amber-400" />}
                                 {item.category}
                               </span>
                               <span
-                                className={`absolute top-2.5 right-2.5 text-[10px] font-bold px-2 py-0.5 rounded-md backdrop-blur ${
+                                className={`absolute top-2.5 right-2.5 text-[10px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-md border ${
                                   isSoldOut
-                                    ? 'bg-rose-600 text-white'
+                                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                                     : item.stock <= 5
-                                    ? 'bg-amber-500 text-white'
-                                    : 'bg-emerald-600 text-white'
+                                    ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                 }`}
                               >
-                                {isSoldOut ? 'Stok Habis' : `Sisa ${item.stock}`}
+                                {isSoldOut ? 'Habis' : `Stok: ${item.stock}`}
                               </span>
                             </div>
 
                             <div className="p-4 flex-1 flex flex-col justify-between">
                               <div>
                                 <div className="flex items-start justify-between gap-1">
-                                  <h4 className="font-bold text-stone-900 text-sm leading-snug group-hover:text-amber-600 transition">
+                                  <h4 className="font-bold text-slate-100 text-sm leading-snug group-hover:text-amber-400 transition">
                                     {item.name}
                                   </h4>
                                   {currentRole === 'staff' && (
                                     <button
                                       onClick={() => handleOpenEditMenuModal(item)}
-                                      className="p-1 text-stone-400 hover:text-stone-700 hover:bg-stone-100 rounded"
+                                      className="p-1 text-slate-500 hover:text-slate-200 hover:bg-slate-900 rounded"
                                       title="Edit Menu"
                                     >
                                       <Edit3 className="w-3.5 h-3.5" />
                                     </button>
                                   )}
                                 </div>
-                                <p className="text-stone-500 text-xs line-clamp-2 mt-1.5 font-normal">
+                                <p className="text-slate-400 text-xs line-clamp-2 mt-1.5 font-light">
                                   {item.description}
                                 </p>
                               </div>
 
-                              <div className="mt-4 pt-3 border-t border-stone-100 flex items-center justify-between">
+                              <div className="mt-4 pt-3 border-t border-slate-900 flex items-center justify-between">
                                 <div>
-                                  <p className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">Harga</p>
-                                  <p className="text-sm font-black text-stone-900">{formatRupiah(item.price)}</p>
+                                  <p className="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Harga</p>
+                                  <p className="text-sm font-black text-slate-100">{formatRupiah(item.price)}</p>
                                 </div>
 
                                 {cartItem ? (
-                                  <div className="flex items-center bg-stone-100 border border-stone-200 rounded-xl p-0.5 shadow-inner">
+                                  <div className="flex items-center bg-slate-900 border border-slate-800 rounded-xl p-0.5">
                                     <button
                                       onClick={() => handleUpdateCartQty(item.id, -1)}
-                                      className="w-7 h-7 rounded-lg bg-white text-stone-700 flex items-center justify-center font-bold hover:bg-stone-200 active:scale-95 transition"
+                                      className="w-7 h-7 rounded-lg bg-slate-800 text-slate-200 flex items-center justify-center font-bold hover:bg-slate-700 active:scale-95 transition"
                                     >
                                       <Minus className="w-3.5 h-3.5" />
                                     </button>
-                                    <span className="w-7 text-center font-extrabold text-xs text-stone-800">
+                                    <span className="w-7 text-center font-extrabold text-xs text-amber-400">
                                       {cartItem.quantity}
                                     </span>
                                     <button
                                       disabled={cartItem.quantity >= item.stock}
                                       onClick={() => handleUpdateCartQty(item.id, 1)}
-                                      className="w-7 h-7 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold hover:bg-amber-600 active:scale-95 disabled:opacity-40 transition"
+                                      className="w-7 h-7 rounded-lg bg-amber-500 text-slate-950 flex items-center justify-center font-bold hover:bg-amber-400 active:scale-95 disabled:opacity-40 transition"
                                     >
                                       <Plus className="w-3.5 h-3.5" />
                                     </button>
@@ -809,7 +864,7 @@ export default function App() {
                                   <button
                                     disabled={isSoldOut}
                                     onClick={() => handleAddToCart(item)}
-                                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-sm shadow-amber-500/20 active:scale-95 disabled:bg-stone-200 disabled:text-stone-400 disabled:shadow-none transition"
+                                    className="flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-sm active:scale-95 disabled:bg-slate-800 disabled:text-slate-600 transition"
                                   >
                                     <Plus className="w-3.5 h-3.5" />
                                     <span>Pesan</span>
@@ -826,26 +881,26 @@ export default function App() {
 
                 {/* Right Panel Workstation */}
                 <aside className="hidden lg:flex flex-col w-96 shrink-0">
-                  <div className="sticky top-24 bg-white rounded-2xl border border-stone-200 shadow-sm flex flex-col h-[calc(100vh-8rem)]">
-                    <div className="p-4 border-b border-stone-200 flex items-center justify-between">
+                  <div className="sticky top-24 bg-slate-950 rounded-2xl border border-slate-800 shadow-xl flex flex-col h-[calc(100vh-8rem)]">
+                    <div className="p-4 border-b border-slate-800 flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="font-black text-stone-900 text-base">
-                            {currentRole === 'staff' ? 'Kasir Workstation' : 'Keranjang Saya'}
+                          <h3 className="font-bold text-slate-100 text-sm">
+                            {currentRole === 'staff' ? 'POS Workstation' : 'Keranjang Pesanan'}
                           </h3>
-                          <span className="bg-amber-100 text-amber-800 text-[11px] font-bold px-2 py-0.5 rounded-full">
+                          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold px-2 py-0.5 rounded-full">
                             {totalCartCount} Item
                           </span>
                         </div>
-                        <p className="text-xs text-stone-500 mt-0.5">
-                          {selectedTable} &bull; {currentRole === 'staff' ? `Kasir: ${activeCashier.name}` : 'Pesanan Tamu'}
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {selectedTable} &bull; {currentRole === 'staff' ? `Kasir: ${activeCashier.name}` : 'Tamu'}
                         </p>
                       </div>
 
                       {cart.length > 0 && (
                         <button
                           onClick={() => setCart([])}
-                          className="text-stone-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition"
+                          className="text-slate-500 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition"
                           title="Hapus Semua"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -855,52 +910,52 @@ export default function App() {
 
                     <div className="flex-1 overflow-y-auto p-4 space-y-3">
                       {cart.length === 0 ? (
-                        <div className="h-full flex flex-col items-center justify-center text-center p-6 text-stone-400">
-                          <div className="w-14 h-14 rounded-2xl bg-stone-100 flex items-center justify-center text-stone-300 mb-3">
-                            <ShoppingBag className="w-7 h-7" />
+                        <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-500">
+                          <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600 mb-3">
+                            <ShoppingBag className="w-6 h-6" />
                           </div>
-                          <p className="font-bold text-stone-700 text-sm">Pesanan Kosong</p>
-                          <p className="text-xs text-stone-400 mt-1 max-w-[200px]">
-                            Klik tombol tambah pada menu makanan atau minuman untuk menambahkan pesanan.
+                          <p className="font-semibold text-slate-300 text-xs">Belum Ada Pesanan</p>
+                          <p className="text-[11px] text-slate-500 mt-1 max-w-[200px]">
+                            Pilih menu dari katalog di samping untuk memulai transaksi.
                           </p>
                         </div>
                       ) : (
                         cart.map((item) => (
-                          <div key={item.id} className="p-3 rounded-xl border border-stone-200 bg-stone-50/70 space-y-2">
+                          <div key={item.id} className="p-3 rounded-xl border border-slate-800 bg-slate-900/60 space-y-2">
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1">
-                                <h5 className="text-xs font-bold text-stone-800 leading-snug">{item.name}</h5>
-                                <p className="text-[11px] text-stone-500 font-medium mt-0.5">
+                                <h5 className="text-xs font-bold text-slate-200 leading-snug">{item.name}</h5>
+                                <p className="text-[11px] text-slate-400 mt-0.5">
                                   {formatRupiah(item.price)} x {item.quantity}
                                 </p>
                               </div>
-                              <span className="text-xs font-black text-stone-900">
+                              <span className="text-xs font-black text-amber-400">
                                 {formatRupiah(item.price * item.quantity)}
                               </span>
                             </div>
 
-                            <div className="flex items-center justify-between gap-2 pt-1 border-t border-stone-200/60">
+                            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800/80">
                               <input
                                 type="text"
-                                placeholder="Catatan (cth: tidak pedas, es dikit)..."
+                                placeholder="Catatan (cth: tidak pedas)..."
                                 value={item.note || ''}
                                 onChange={(e) => handleUpdateCartNote(item.id, e.target.value)}
-                                className="text-[11px] bg-white border border-stone-200 rounded-lg px-2 py-1 flex-1 text-stone-700 placeholder-stone-400 outline-none focus:border-amber-400"
+                                className="text-[11px] bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 flex-1 text-slate-300 placeholder-slate-600 outline-none focus:border-amber-500"
                               />
 
-                              <div className="flex items-center bg-white border border-stone-200 rounded-lg p-0.5">
+                              <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5">
                                 <button
                                   onClick={() => handleUpdateCartQty(item.id, -1)}
-                                  className="w-5 h-5 rounded flex items-center justify-center text-stone-600 hover:bg-stone-100"
+                                  className="w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:bg-slate-900"
                                 >
-                                  <Minus className="w-3.5 h-3.5" />
+                                  <Minus className="w-3 h-3" />
                                 </button>
-                                <span className="w-5 text-center text-xs font-bold">{item.quantity}</span>
+                                <span className="w-5 text-center text-xs font-bold text-slate-200">{item.quantity}</span>
                                 <button
                                   onClick={() => handleUpdateCartQty(item.id, 1)}
-                                  className="w-5 h-5 rounded flex items-center justify-center text-amber-600 hover:bg-amber-50"
+                                  className="w-5 h-5 rounded flex items-center justify-center text-amber-400 hover:bg-slate-900"
                                 >
-                                  <Plus className="w-3.5 h-3.5" />
+                                  <Plus className="w-3 h-3" />
                                 </button>
                               </div>
                             </div>
@@ -910,23 +965,23 @@ export default function App() {
                     </div>
 
                     {cart.length > 0 && (
-                      <div className="p-4 border-t border-stone-200 bg-white space-y-3 rounded-b-2xl">
-                        <div className="space-y-1.5 text-xs text-stone-600">
+                      <div className="p-4 border-t border-slate-800 bg-slate-950 space-y-3 rounded-b-2xl">
+                        <div className="space-y-1.5 text-xs text-slate-400">
                           <div className="flex justify-between">
                             <span>Subtotal</span>
-                            <span className="font-bold text-stone-800">{formatRupiah(subtotal)}</span>
+                            <span className="font-semibold text-slate-200">{formatRupiah(subtotal)}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Pajak Restoran (PB1 10%)</span>
-                            <span className="font-bold text-stone-800">{formatRupiah(taxAmount)}</span>
+                            <span>Pajak (PB1 10%)</span>
+                            <span className="font-semibold text-slate-200">{formatRupiah(taxAmount)}</span>
                           </div>
                           <div className="flex justify-between">
                             <span>Biaya Layanan</span>
-                            <span className="font-bold text-stone-800">{formatRupiah(serviceFee)}</span>
+                            <span className="font-semibold text-slate-200">{formatRupiah(serviceFee)}</span>
                           </div>
-                          <div className="pt-2 border-t border-stone-200 flex justify-between items-baseline">
-                            <span className="text-sm font-black text-stone-900">Total Pembayaran</span>
-                            <span className="text-base font-black text-amber-600">{formatRupiah(grandTotal)}</span>
+                          <div className="pt-2 border-t border-slate-800 flex justify-between items-baseline">
+                            <span className="text-sm font-bold text-slate-100">Total Tagihan</span>
+                            <span className="text-base font-black text-amber-400">{formatRupiah(grandTotal)}</span>
                           </div>
                         </div>
 
@@ -934,14 +989,14 @@ export default function App() {
                           <div className="grid grid-cols-3 gap-2 pt-1">
                             <button
                               onClick={() => setIsSplitBillModalOpen(true)}
-                              className="col-span-1 border border-stone-300 text-stone-700 hover:bg-stone-100 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1 transition"
+                              className="col-span-1 border border-slate-800 text-slate-300 hover:bg-slate-900 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1 transition"
                             >
-                              <SlidersHorizontal className="w-3.5 h-3.5" />
+                              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
                               Split
                             </button>
                             <button
                               onClick={() => setIsPaymentModalOpen(true)}
-                              className="col-span-2 bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition"
+                              className="col-span-2 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition"
                             >
                               <span>Bayar Kasir</span>
                               <ArrowRight className="w-3.5 h-3.5" />
@@ -954,7 +1009,7 @@ export default function App() {
                                 setPaymentType('pay_at_cashier');
                                 handleCheckoutSuccess(true);
                               }}
-                              className="w-full bg-stone-900 hover:bg-stone-800 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow transition"
+                              className="w-full bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-200 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition"
                             >
                               <Banknote className="w-3.5 h-3.5 text-amber-400" />
                               <span>Pesan & Bayar di Kasir</span>
@@ -964,10 +1019,10 @@ export default function App() {
                                 setPaymentType('qris');
                                 setIsPaymentModalOpen(true);
                               }}
-                              className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 transition"
+                              className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 transition"
                             >
                               <QrCode className="w-3.5 h-3.5" />
-                              <span>Bayar via QRIS</span>
+                              <span>Bayar via QRIS Digital</span>
                             </button>
                           </div>
                         )}
@@ -981,25 +1036,25 @@ export default function App() {
             {/* VIEW: ANTREAN PESANAN MASUK REALTIME */}
             {currentRole === 'staff' && staffTab === 'incoming' && (
               <div className="space-y-4">
-                <div className="bg-white p-4 rounded-2xl border border-stone-200 flex justify-between items-center shadow-sm">
+                <div className="bg-slate-950 p-4 sm:p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-sm">
                   <div>
-                    <h2 className="text-base font-black text-stone-900">Antrean Pesanan Masuk </h2>
-                    <p className="text-xs text-stone-500">
-                      Operator Kasir Bertugas: <strong className="text-amber-600">{activeCashier.name}</strong>
+                    <h2 className="text-base font-bold text-slate-100">Antrean Pesanan Masuk</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Kasir Aktif: <strong className="text-amber-400">{activeCashier.name}</strong>
                     </p>
                   </div>
-                  <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Live
+                  <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    Live Sinkronisasi
                   </span>
                 </div>
 
                 {liveOrders.length === 0 ? (
-                  <div className="bg-white rounded-2xl border border-stone-200 p-12 text-center text-stone-400">
-                    <Bell className="w-10 h-10 mx-auto mb-2 text-stone-300" />
-                    <p className="font-bold text-sm text-stone-700">Belum Ada Pesanan Masuk</p>
-                    <p className="text-xs text-stone-400 mt-1">
-                      Pesanan yang dikirim oleh pelanggan dari ponsel akan langsung muncul di sini.
+                  <div className="bg-slate-950 rounded-2xl border border-slate-800 p-16 text-center text-slate-500">
+                    <Bell className="w-10 h-10 mx-auto mb-2.5 text-slate-700" />
+                    <p className="font-semibold text-sm text-slate-300">Belum Ada Pesanan Masuk</p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Pesanan dari pelanggan mandiri akan otomatis muncul secara instan di sini.
                     </p>
                   </div>
                 ) : (
@@ -1007,56 +1062,56 @@ export default function App() {
                     {liveOrders.map((ord) => (
                       <div
                         key={ord.id}
-                        className={`bg-white rounded-2xl border p-4 shadow-sm flex flex-col justify-between ${
+                        className={`bg-slate-950 rounded-2xl border p-4.5 shadow-sm flex flex-col justify-between ${
                           ord.status === 'Selesai'
-                            ? 'border-stone-200 opacity-60'
+                            ? 'border-slate-800 opacity-60'
                             : ord.status === 'Sedang Disiapkan'
-                            ? 'border-blue-300 bg-blue-50/20'
-                            : 'border-amber-300 bg-amber-50/30'
+                            ? 'border-blue-500/40 bg-blue-950/10'
+                            : 'border-amber-500/40 bg-amber-950/10'
                         }`}
                       >
                         <div>
-                          <div className="flex justify-between items-start pb-2 border-b border-stone-100">
+                          <div className="flex justify-between items-start pb-3 border-b border-slate-800">
                             <div>
-                              <span className="font-black text-stone-900 text-sm">{ord.order_code}</span>
-                              <span className="block text-xs font-bold text-stone-700">{ord.table_no} &bull; {ord.customer_name}</span>
+                              <span className="font-black text-slate-100 text-sm">{ord.order_code}</span>
+                              <span className="block text-xs font-medium text-slate-400 mt-0.5">{ord.table_no} &bull; {ord.customer_name}</span>
                             </div>
                             <span
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                              className={`text-[10px] font-bold px-2.5 py-1 rounded-md border ${
                                 ord.status === 'Selesai'
-                                  ? 'bg-emerald-100 text-emerald-800'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                   : ord.status === 'Sedang Disiapkan'
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-amber-100 text-amber-800'
+                                  ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                                  : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                               }`}
                             >
                               {ord.status}
                             </span>
                           </div>
 
-                          <div className="py-3 space-y-1 text-xs">
+                          <div className="py-3 space-y-1.5 text-xs text-slate-300">
                             {ord.items.map((i, idx) => (
                               <div key={idx} className="flex justify-between">
                                 <span>
-                                  <strong>{i.quantity}x</strong> {i.name}
-                                  {i.note ? <span className="text-stone-400 italic"> ({i.note})</span> : ''}
+                                  <strong className="text-amber-400">{i.quantity}x</strong> {i.name}
+                                  {i.note ? <span className="text-slate-500 italic"> ({i.note})</span> : ''}
                                 </span>
-                                <span className="text-stone-500">{formatRupiah(i.price * i.quantity)}</span>
+                                <span className="text-slate-400">{formatRupiah(i.price * i.quantity)}</span>
                               </div>
                             ))}
                           </div>
                         </div>
 
-                        <div className="pt-3 border-t border-stone-100 space-y-2">
+                        <div className="pt-3 border-t border-slate-800 space-y-2.5">
                           <div className="flex justify-between items-baseline text-xs font-black">
-                            <span>Grand Total:</span>
-                            <span className="text-amber-600 text-sm">{formatRupiah(ord.grand_total)}</span>
+                            <span className="text-slate-400">Total Transaksi:</span>
+                            <span className="text-amber-400 text-sm">{formatRupiah(ord.grand_total)}</span>
                           </div>
 
                           {ord.status === 'Menunggu Konfirmasi' && (
                             <button
                               onClick={() => handleUpdateOrderStatus(ord, 'Sedang Disiapkan')}
-                              className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition"
+                              className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-blue-600/20"
                             >
                               Terima & Masak di Dapur
                             </button>
@@ -1065,15 +1120,15 @@ export default function App() {
                           {ord.status === 'Sedang Disiapkan' && (
                             <button
                               onClick={() => handleUpdateOrderStatus(ord, 'Selesai')}
-                              className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition"
+                              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-emerald-600/20"
                             >
                               Tandai Selesai ({activeCashier.name})
                             </button>
                           )}
 
                           {ord.status === 'Selesai' && (
-                            <div className="text-center text-[11px] text-emerald-700 font-bold bg-emerald-50 py-1.5 rounded-lg">
-                              ✓ Transaksi Lunas
+                            <div className="text-center text-[11px] text-emerald-400 font-semibold bg-emerald-500/10 py-2 rounded-xl border border-emerald-500/20">
+                              ✓ Transaksi Selesai & Lunas
                             </div>
                           )}
                         </div>
@@ -1087,73 +1142,73 @@ export default function App() {
             {/* VIEW 2: STAFF INVENTORY & MENU MANAGEMENT */}
             {currentRole === 'staff' && staffTab === 'inventory' && (
               <div className="space-y-5">
-                <div className="bg-white p-5 rounded-2xl border border-stone-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
-                    <h2 className="text-lg font-black text-stone-900">Manajemen Stok Menu </h2>
-                    <p className="text-xs text-stone-500 mt-0.5">
-                      Kelola daftar hidangan, harga, dan pemotongan stok Real-Time.
+                    <h2 className="text-base font-bold text-slate-100">Manajemen Katalog & Stok Menu</h2>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Kelola daftar menu, ketersediaan porsi, dan harga secara real-time.
                     </p>
                   </div>
                   <button
                     onClick={handleOpenNewMenuModal}
-                    className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-sm self-start sm:self-auto"
+                    className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 px-4 py-2.5 rounded-xl text-xs font-bold transition shadow-md shadow-amber-500/15 self-start sm:self-auto"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Tambah Menu Baru</span>
                   </button>
                 </div>
 
-                <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+                <div className="bg-slate-950 rounded-2xl border border-slate-800 shadow-sm overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-stone-50 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider">
+                      <thead className="bg-slate-900 border-b border-slate-800 text-slate-400 font-bold uppercase tracking-wider">
                         <tr>
                           <th className="p-3.5">Menu</th>
                           <th className="p-3.5">Kategori</th>
                           <th className="p-3.5">Harga</th>
-                          <th className="p-3.5">Stok Tersedia</th>
+                          <th className="p-3.5">Stok Porsi</th>
                           <th className="p-3.5">Status</th>
                           <th className="p-3.5 text-right">Aksi</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-stone-100">
+                      <tbody className="divide-y divide-slate-900 text-slate-300">
                         {menuItems.map((prod) => (
-                          <tr key={prod.id} className="hover:bg-stone-50/60 transition">
+                          <tr key={prod.id} className="hover:bg-slate-900/50 transition">
                             <td className="p-3.5">
                               <div className="flex items-center gap-3">
                                 <img
                                   src={prod.image}
                                   alt={prod.name}
-                                  className="w-10 h-10 rounded-lg object-cover border border-stone-200 shrink-0"
+                                  className="w-10 h-10 rounded-xl object-cover border border-slate-800 shrink-0"
                                 />
                                 <div>
-                                  <p className="font-bold text-stone-900 text-xs">{prod.name}</p>
-                                  <p className="text-[10px] text-stone-400 line-clamp-1 max-w-xs">{prod.description}</p>
+                                  <p className="font-bold text-slate-100 text-xs">{prod.name}</p>
+                                  <p className="text-[10px] text-slate-500 line-clamp-1 max-w-xs">{prod.description}</p>
                                 </div>
                               </div>
                             </td>
                             <td className="p-3.5">
                               <span
-                                className={`inline-block px-2 py-0.5 rounded-md font-semibold text-[10px] ${
-                                  prod.category === 'Makanan' ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+                                className={`inline-block px-2.5 py-1 rounded-md font-semibold text-[10px] border ${
+                                  prod.category === 'Makanan' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
                                 }`}
                               >
                                 {prod.category}
                               </span>
                             </td>
-                            <td className="p-3.5 font-bold text-stone-900">{formatRupiah(prod.price)}</td>
+                            <td className="p-3.5 font-bold text-slate-200">{formatRupiah(prod.price)}</td>
                             <td className="p-3.5">
-                              <span className={`font-black ${prod.stock <= 5 ? 'text-rose-600' : 'text-stone-800'}`}>
+                              <span className={`font-black ${prod.stock <= 5 ? 'text-rose-400' : 'text-slate-200'}`}>
                                 {prod.stock} Porsi
                               </span>
                             </td>
                             <td className="p-3.5">
                               <button
                                 onClick={() => handleToggleProductAvailability(prod)}
-                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
+                                className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition ${
                                   prod.is_available && prod.stock > 0
-                                    ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
-                                    : 'bg-rose-100 text-rose-800 hover:bg-rose-200'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20'
+                                    : 'bg-rose-500/10 text-rose-400 border-rose-500/20 hover:bg-rose-500/20'
                                 }`}
                               >
                                 {prod.is_available && prod.stock > 0 ? 'Tersedia' : 'Habis'}
@@ -1163,14 +1218,14 @@ export default function App() {
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   onClick={() => handleOpenEditMenuModal(prod)}
-                                  className="p-1.5 text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-lg transition"
+                                  className="p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-900 rounded-lg transition"
                                   title="Edit Menu"
                                 >
                                   <Edit3 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   onClick={() => handleDeleteProduct(prod.id)}
-                                  className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                  className="p-1.5 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition"
                                   title="Hapus Menu"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -1186,18 +1241,18 @@ export default function App() {
               </div>
             )}
 
-            {/* VIEW 3: SHIFT MANAGEMENT DENGAN OPSI ATUR SHIFT 1 / SHIFT 2 */}
+            {/* VIEW 3: SHIFT MANAGEMENT */}
             {currentRole === 'staff' && staffTab === 'shift' && (
               <div className="max-w-2xl mx-auto w-full space-y-5">
-                <div className="bg-white p-6 rounded-2xl border border-stone-200 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-stone-200">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                <div className="bg-slate-950 p-6 rounded-2xl border border-slate-800 shadow-sm space-y-5">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center">
                         <Clock className="w-5 h-5" />
                       </div>
                       <div>
-                        <h3 className="text-base font-black text-stone-900">Shift & Rekonsiliasi Kasir</h3>
-                        <p className="text-xs text-stone-500">Kelola jam kerja shift dan penyesuaian target kas laci.</p>
+                        <h3 className="text-base font-bold text-slate-100">Shift & Rekonsiliasi Kasir</h3>
+                        <p className="text-xs text-slate-400">Pengelolaan shift jam kerja dan audit kas fisik laci.</p>
                       </div>
                     </div>
                     <button
@@ -1211,61 +1266,61 @@ export default function App() {
                         });
                         setIsEditShiftModalOpen(true);
                       }}
-                      className="px-3.5 py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                      className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-xl text-xs font-semibold border border-slate-800 transition flex items-center gap-1.5 shadow-sm"
                     >
                       <Edit3 className="w-3.5 h-3.5 text-amber-400" />
                       <span>Atur Shift & Kas</span>
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-stone-50 p-4 rounded-xl border border-stone-200 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-900/60 p-4 rounded-xl border border-slate-800 text-xs">
                     <div>
-                      <span className="text-stone-400 block text-[10px] uppercase font-bold">Kasir Penanggung Jawab</span>
-                      <span className="font-extrabold text-stone-900 text-sm">{activeCashier.name}</span>
-                      <span className="block text-[10px] text-amber-600 font-semibold">{activeCashier.role}</span>
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">Kasir Bertugas</span>
+                      <span className="font-bold text-slate-200 text-sm mt-0.5 block">{activeCashier.name}</span>
+                      <span className="text-[10px] text-amber-400 font-semibold">{activeCashier.role} POS</span>
                     </div>
                     <div>
-                      <span className="text-stone-400 block text-[10px] uppercase font-bold">Jadwal Shift Restoran</span>
-                      <span className="font-extrabold text-stone-900 text-sm">{shiftData.shiftName}</span>
-                      <span className="block text-[10px] text-stone-500 font-medium">
-                        Pukul {shiftData.startTime} s.d. {shiftData.endTime}
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">Jadwal Shift</span>
+                      <span className="font-bold text-slate-200 text-sm mt-0.5 block">{shiftData.shiftName}</span>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {shiftData.startTime} s.d. {shiftData.endTime}
                       </span>
                     </div>
                   </div>
 
-                  <div className="space-y-2 text-xs pt-1">
-                    <div className="flex justify-between py-1 border-b border-stone-100">
-                      <span className="text-stone-600">Modal Kas Awal Laci (Float):</span>
-                      <span className="font-bold text-stone-800">{formatRupiah(shiftData.initialFloat)}</span>
+                  <div className="space-y-2 text-xs pt-1 text-slate-300">
+                    <div className="flex justify-between py-1.5 border-b border-slate-900">
+                      <span className="text-slate-400">Modal Kas Awal Laci (Float):</span>
+                      <span className="font-bold text-slate-200">{formatRupiah(shiftData.initialFloat)}</span>
                     </div>
-                    <div className="flex justify-between py-1 border-b border-stone-100">
-                      <span className="text-stone-600">Penerimaan Kas Tunai:</span>
-                      <span className="font-bold text-emerald-700">+{formatRupiah(shiftData.cashSales)}</span>
+                    <div className="flex justify-between py-1.5 border-b border-slate-900">
+                      <span className="text-slate-400">Penerimaan Kas Tunai:</span>
+                      <span className="font-bold text-emerald-400">+{formatRupiah(shiftData.cashSales)}</span>
                     </div>
-                    <div className="flex justify-between py-1 border-b border-stone-100">
-                      <span className="text-stone-600">Total Transaksi Non-Tunai:</span>
-                      <span className="font-bold text-blue-700">{formatRupiah(shiftData.nonCashSales)}</span>
+                    <div className="flex justify-between py-1.5 border-b border-slate-900">
+                      <span className="text-slate-400">Total Transaksi Non-Tunai:</span>
+                      <span className="font-bold text-blue-400">{formatRupiah(shiftData.nonCashSales)}</span>
                     </div>
-                    <div className="flex justify-between py-2.5 font-black text-sm bg-amber-50 px-3 rounded-xl border border-amber-200">
-                      <span className="text-amber-900">Target Ekspektasi Uang di Laci:</span>
-                      <span className="text-amber-900">{formatRupiah(shiftData.expectedCash)}</span>
+                    <div className="flex justify-between py-3 font-black text-sm bg-amber-500/10 px-4 rounded-xl border border-amber-500/20">
+                      <span className="text-amber-400">Target Ekspektasi Uang di Laci:</span>
+                      <span className="text-amber-300">{formatRupiah(shiftData.expectedCash)}</span>
                     </div>
                   </div>
 
                   <div className="pt-2">
-                    <label className="block text-xs font-bold text-stone-700 mb-1.5">
-                      Hitung Uang Fisik Aktual di Laci Kasir ({activeCashier.name}):
+                    <label className="block text-xs font-bold text-slate-300 mb-2">
+                      Hitung Fisik Uang di Laci Kasir ({activeCashier.name}):
                     </label>
                     <input
                       type="number"
-                      placeholder="Masukkan total uang tunai di laci..."
+                      placeholder="Masukkan total uang fisik di laci..."
                       value={shiftData.countedCash}
                       onChange={(e) => {
                         const val = e.target.value;
                         const diff = val ? Number(val) - shiftData.expectedCash : null;
                         setShiftData({ ...shiftData, countedCash: val, shiftDiscrepancy: diff });
                       }}
-                      className="w-full bg-stone-50 border border-stone-300 rounded-xl px-4 py-2.5 text-sm font-black text-stone-900 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-slate-100 outline-none focus:border-amber-500 transition"
                     />
                   </div>
 
@@ -1273,24 +1328,24 @@ export default function App() {
                     <div
                       className={`p-3.5 rounded-xl border text-xs flex items-center justify-between ${
                         shiftData.shiftDiscrepancy === 0
-                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                          : 'bg-rose-50 border-rose-200 text-rose-900'
+                          ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                          : 'bg-rose-500/10 border-rose-500/20 text-rose-400'
                       }`}
                     >
-                      <span className="font-bold">Status Selisih Kas Laci:</span>
+                      <span className="font-semibold">Selisih Laci Kas:</span>
                       <span className="font-black text-sm">
                         {formatRupiah(shiftData.shiftDiscrepancy)}
-                        {shiftData.shiftDiscrepancy === 0 ? ' (Sesuai / Pas)' : ' (Selisih Terdeteksi)'}
+                        {shiftData.shiftDiscrepancy === 0 ? ' (Sempurna / Pas)' : ' (Ada Selisih)'}
                       </span>
                     </div>
                   )}
 
                   <button
                     onClick={() => {
-                      alert(`Shift untuk ${activeCashier.name} berhasil ditutup!`);
+                      alert(`Shift untuk ${activeCashier.name} berhasil ditutup & diarsipkan!`);
                       setShiftData((s) => ({ ...s, countedCash: '', shiftDiscrepancy: null }));
                     }}
-                    className="w-full py-3 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition shadow-sm"
+                    className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 rounded-xl text-xs font-bold transition shadow-sm"
                   >
                     Tutup Shift & Arsipkan Laporan Kasir
                   </button>
@@ -1302,83 +1357,91 @@ export default function App() {
             {currentRole === 'staff' && staffTab === 'reports' && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm">
-                    <span className="text-[10px] uppercase font-bold text-stone-400">Total Omzet Pesanan Selesai</span>
-                    <p className="text-xl font-black text-stone-900 mt-1">
+                  <div className="bg-slate-950 p-4.5 rounded-2xl border border-slate-800 shadow-sm">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Total Omzet Lunas</span>
+                    <p className="text-xl font-black text-slate-100 mt-1">
                       {formatRupiah(
                         liveOrders
                           .filter((o) => o.status === 'Selesai')
                           .reduce((s, o) => s + Number(o.grand_total), 0)
                       )}
                     </p>
-                    <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-bold mt-1">
+                    <div className="flex items-center gap-1 text-[11px] text-emerald-400 font-semibold mt-1">
                       <TrendingUp className="w-3 h-3" />
                       <span>Real-Time</span>
                     </div>
                   </div>
 
-                  <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm">
-                    <span className="text-[10px] uppercase font-bold text-stone-400">Total Transaksi Selesai</span>
-                    <p className="text-xl font-black text-stone-900 mt-1">
+                  <div className="bg-slate-950 p-4.5 rounded-2xl border border-slate-800 shadow-sm">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Total Transaksi Selesai</span>
+                    <p className="text-xl font-black text-slate-100 mt-1">
                       {liveOrders.filter((o) => o.status === 'Selesai').length} Nota
                     </p>
-                    <p className="text-[11px] text-stone-500 mt-1">Status lunas dibayar</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Pembayaran terverifikasi</p>
                   </div>
 
-                  <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm">
-                    <span className="text-[10px] uppercase font-bold text-stone-400">Pesanan Dalam Proses</span>
-                    <p className="text-xl font-black text-stone-900 mt-1">
+                  <div className="bg-slate-950 p-4.5 rounded-2xl border border-slate-800 shadow-sm">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Pesanan Dalam Proses</span>
+                    <p className="text-xl font-black text-amber-400 mt-1">
                       {liveOrders.filter((o) => o.status !== 'Selesai').length} Pesanan
                     </p>
-                    <p className="text-[11px] text-stone-500 mt-1">Menunggu / Sedang Disiapkan</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Dapur / Menunggu Konfirmasi</p>
                   </div>
 
-                  <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm">
-                    <span className="text-[10px] uppercase font-bold text-stone-400">Tim Kasir Terdaftar</span>
-                    <p className="text-xl font-black text-amber-600 mt-1">
-                      {CASHIERS_LIST.length} Orang
+                  <div className="bg-slate-950 p-4.5 rounded-2xl border border-slate-800 shadow-sm">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Tim Kasir Terdaftar</span>
+                    <p className="text-xl font-black text-slate-100 mt-1">
+                      {CASHIERS_LIST.length} Operator
                     </p>
-                    <p className="text-[11px] text-stone-500 mt-1">Operator POS MenuKu</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Sistem POS Multi-Kasir</p>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-                  <div className="p-4 border-b border-stone-200">
-                    <h4 className="font-extrabold text-stone-900 text-sm">Riwayat Transaksi Masuk</h4>
+                <div className="bg-slate-950 rounded-2xl border border-slate-800 shadow-sm overflow-hidden">
+                  <div className="p-4.5 border-b border-slate-800 flex items-center justify-between">
+                    <h4 className="font-bold text-slate-100 text-sm">Riwayat Transaksi & Laporan Omzet</h4>
+                    <button
+                      onClick={handleExportCSV}
+                      className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition shadow-md shadow-emerald-600/20 active:scale-95"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Ekspor CSV</span>
+                      <span className="sm:hidden">Ekspor CSV</span>
+                    </button>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
-                      <thead className="bg-stone-50 text-stone-500 font-bold border-b border-stone-200 uppercase">
+                      <thead className="bg-slate-900 text-slate-400 font-bold border-b border-slate-800 uppercase">
                         <tr>
-                          <th className="p-3">ID Order</th>
-                          <th className="p-3">Meja / Tamu</th>
-                          <th className="p-3">Metode Bayar</th>
-                          <th className="p-3">Status</th>
-                          <th className="p-3 text-right">Grand Total</th>
+                          <th className="p-3.5">ID Order</th>
+                          <th className="p-3.5">Meja / Tamu</th>
+                          <th className="p-3.5">Metode Bayar</th>
+                          <th className="p-3.5">Status</th>
+                          <th className="p-3.5 text-right">Grand Total</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-stone-100">
+                      <tbody className="divide-y divide-slate-900 text-slate-300">
                         {liveOrders.map((item) => (
-                          <tr key={item.id} className="hover:bg-stone-50/70">
-                            <td className="p-3 font-bold text-stone-900">{item.order_code}</td>
-                            <td className="p-3 font-semibold text-stone-800">{item.table_no} &bull; {item.customer_name}</td>
-                            <td className="p-3">
-                              <span className="bg-stone-100 text-stone-800 px-2 py-0.5 rounded text-[11px] font-semibold">
+                          <tr key={item.id} className="hover:bg-slate-900/50">
+                            <td className="p-3.5 font-bold text-slate-100">{item.order_code}</td>
+                            <td className="p-3.5 font-semibold text-slate-200">{item.table_no} &bull; {item.customer_name}</td>
+                            <td className="p-3.5">
+                              <span className="bg-slate-900 text-slate-300 border border-slate-800 px-2.5 py-1 rounded-md text-[11px] font-semibold">
                                 {item.payment_method}
                               </span>
                             </td>
-                            <td className="p-3">
+                            <td className="p-3.5">
                               <span
-                                className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                className={`text-[10px] font-bold px-2.5 py-1 rounded-md border ${
                                   item.status === 'Selesai'
-                                    ? 'bg-emerald-100 text-emerald-800'
-                                    : 'bg-amber-100 text-amber-800'
+                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                    : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                 }`}
                               >
                                 {item.status}
                               </span>
                             </td>
-                            <td className="p-3 text-right font-black text-stone-900">{formatRupiah(item.grand_total)}</td>
+                            <td className="p-3.5 text-right font-black text-amber-400">{formatRupiah(item.grand_total)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1393,20 +1456,20 @@ export default function App() {
 
       {/* MOBILE FLOATING CART BAR */}
       {cart.length > 0 && (
-        <div className="lg:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur border-t border-stone-200 p-3 px-4 z-40 shadow-2xl">
+        <div className="lg:hidden fixed bottom-0 inset-x-0 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 p-3 px-4 z-40 shadow-2xl">
           <div className="flex items-center justify-between gap-3 max-w-md mx-auto">
             <button onClick={() => setIsMobileCartOpen(true)} className="flex items-center gap-3 text-left">
-              <div className="relative w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/30">
+              <div className="relative w-11 h-11 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shadow-md font-black">
                 <ShoppingBag className="w-5 h-5" />
-                <span className="absolute -top-1 -right-1 bg-stone-900 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                <span className="absolute -top-1 -right-1 bg-slate-900 text-amber-400 border border-slate-800 text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-black">
                   {totalCartCount}
                 </span>
               </div>
               <div>
-                <p className="text-[11px] text-stone-500 font-medium">
+                <p className="text-[11px] text-slate-400 font-medium">
                   {selectedTable} ({totalCartCount} item)
                 </p>
-                <p className="text-sm font-black text-stone-900">{formatRupiah(grandTotal)}</p>
+                <p className="text-sm font-black text-amber-400">{formatRupiah(grandTotal)}</p>
               </div>
             </button>
 
@@ -1418,9 +1481,9 @@ export default function App() {
                   setIsMobileCartOpen(true);
                 }
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md active:scale-95 transition"
             >
-              <span>{currentRole === 'staff' ? 'Bayar Kasir' : 'Lihat Pesanan'}</span>
+              <span>{currentRole === 'staff' ? 'Bayar Kasir' : 'Lihat Keranjang'}</span>
               <ChevronUp className="w-4 h-4" />
             </button>
           </div>
@@ -1429,16 +1492,16 @@ export default function App() {
 
       {/* MOBILE CART SHEET MODAL */}
       {isMobileCartOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-stone-900/60 backdrop-blur-sm lg:hidden">
-          <div className="bg-white w-full max-h-[85vh] rounded-t-3xl p-5 flex flex-col shadow-2xl animate-in slide-in-from-bottom">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/80 backdrop-blur-sm lg:hidden">
+          <div className="bg-slate-950 border border-slate-800 w-full max-h-[85vh] rounded-t-3xl p-5 flex flex-col shadow-2xl animate-in slide-in-from-bottom">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div>
-                <h3 className="font-black text-stone-900 text-base">Rincian Pesanan</h3>
-                <p className="text-xs text-stone-500">{selectedTable} &bull; {totalCartCount} Item</p>
+                <h3 className="font-bold text-slate-100 text-sm">Rincian Keranjang Pesanan</h3>
+                <p className="text-xs text-slate-400">{selectedTable} &bull; {totalCartCount} Item</p>
               </div>
               <button
                 onClick={() => setIsMobileCartOpen(false)}
-                className="w-8 h-8 rounded-full bg-stone-100 flex items-center justify-center text-stone-500"
+                className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-400"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1446,44 +1509,44 @@ export default function App() {
 
             {currentRole === 'customer' && (
               <div className="pt-3">
-                <label className="text-[11px] font-bold text-stone-700 block mb-1">Nama Pemesan (Opsional):</label>
+                <label className="text-[11px] font-semibold text-slate-400 block mb-1">Nama Pemesan / Tamu:</label>
                 <input
                   type="text"
                   placeholder="Masukkan nama Anda..."
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full text-xs bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 outline-none"
+                  className="w-full text-xs bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-slate-200 outline-none focus:border-amber-500"
                 />
               </div>
             )}
 
-            <div className="overflow-y-auto py-3 space-y-3 flex-1">
+            <div className="overflow-y-auto py-3 space-y-2.5 flex-1">
               {cart.map((item) => (
-                <div key={item.id} className="p-3 rounded-xl border border-stone-200 bg-stone-50">
+                <div key={item.id} className="p-3 rounded-xl border border-slate-800 bg-slate-900">
                   <div className="flex justify-between items-start">
                     <div>
-                      <h5 className="font-bold text-xs text-stone-900">{item.name}</h5>
-                      <p className="text-xs text-stone-500 mt-0.5">{formatRupiah(item.price)}</p>
+                      <h5 className="font-bold text-xs text-slate-200">{item.name}</h5>
+                      <p className="text-xs text-slate-400 mt-0.5">{formatRupiah(item.price)}</p>
                     </div>
-                    <span className="text-xs font-black text-stone-900">
+                    <span className="text-xs font-black text-amber-400">
                       {formatRupiah(item.price * item.quantity)}
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-stone-200">
+                  <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-800">
                     <input
                       type="text"
-                      placeholder="Catatan pesanan..."
+                      placeholder="Catatan..."
                       value={item.note || ''}
                       onChange={(e) => handleUpdateCartNote(item.id, e.target.value)}
-                      className="text-xs bg-white border border-stone-200 rounded-lg px-2 py-1 w-1/2 outline-none"
+                      className="text-xs bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 w-1/2 text-slate-300 outline-none"
                     />
-                    <div className="flex items-center bg-white border border-stone-200 rounded-lg p-0.5">
-                      <button onClick={() => handleUpdateCartQty(item.id, -1)} className="w-6 h-6 flex items-center justify-center">
+                    <div className="flex items-center bg-slate-950 border border-slate-800 rounded-lg p-0.5">
+                      <button onClick={() => handleUpdateCartQty(item.id, -1)} className="w-6 h-6 flex items-center justify-center text-slate-400">
                         <Minus className="w-3.5 h-3.5" />
                       </button>
-                      <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
-                      <button onClick={() => handleUpdateCartQty(item.id, 1)} className="w-6 h-6 flex items-center justify-center text-amber-600">
+                      <span className="w-6 text-center text-xs font-bold text-amber-400">{item.quantity}</span>
+                      <button onClick={() => handleUpdateCartQty(item.id, 1)} className="w-6 h-6 flex items-center justify-center text-amber-400">
                         <Plus className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -1492,25 +1555,25 @@ export default function App() {
               ))}
             </div>
 
-            <div className="pt-3 border-t border-stone-200 space-y-2">
-              <div className="flex justify-between text-xs text-stone-600">
+            <div className="pt-3 border-t border-slate-800 space-y-2">
+              <div className="flex justify-between text-xs text-slate-400">
                 <span>Subtotal:</span>
-                <span className="font-bold text-stone-900">{formatRupiah(subtotal)}</span>
+                <span className="font-semibold text-slate-200">{formatRupiah(subtotal)}</span>
               </div>
-              <div className="flex justify-between text-xs text-stone-600">
+              <div className="flex justify-between text-xs text-slate-400">
                 <span>Pajak (PB1 10%) & Layanan:</span>
-                <span className="font-bold text-stone-900">{formatRupiah(taxAmount + serviceFee)}</span>
+                <span className="font-semibold text-slate-200">{formatRupiah(taxAmount + serviceFee)}</span>
               </div>
-              <div className="flex justify-between text-sm font-black text-stone-900">
+              <div className="flex justify-between text-sm font-bold text-slate-100">
                 <span>Total:</span>
-                <span className="text-amber-600">{formatRupiah(grandTotal)}</span>
+                <span className="text-amber-400 font-black">{formatRupiah(grandTotal)}</span>
               </div>
 
               {currentRole === 'staff' ? (
                 <div className="grid grid-cols-3 gap-2 pt-2">
                   <button
                     onClick={() => { setIsMobileCartOpen(false); setIsSplitBillModalOpen(true); }}
-                    className="col-span-1 border border-stone-300 py-3 rounded-xl font-bold text-xs text-stone-700"
+                    className="col-span-1 border border-slate-800 py-3 rounded-xl font-bold text-xs text-slate-300 bg-slate-900"
                   >
                     Split
                   </button>
@@ -1528,7 +1591,7 @@ export default function App() {
                       setPaymentType('pay_at_cashier');
                       handleCheckoutSuccess(true);
                     }}
-                    className="w-full bg-stone-900 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow"
+                    className="w-full bg-slate-900 border border-slate-800 text-slate-200 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow"
                   >
                     <Banknote className="w-4 h-4 text-amber-400" />
                     <span>Pesan Sekarang (Bayar di Kasir)</span>
@@ -1539,7 +1602,7 @@ export default function App() {
                       setPaymentType('qris');
                       setIsPaymentModalOpen(true);
                     }}
-                    className="w-full bg-amber-500 text-white py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow"
+                    className="w-full bg-amber-500 text-slate-950 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow"
                   >
                     <QrCode className="w-4 h-4" />
                     <span>Bayar via QRIS Digital</span>
@@ -1553,62 +1616,51 @@ export default function App() {
 
       {/* MULTI-KASIR PIN LOGIN MODAL */}
       {isLoginModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-950 border border-slate-800 w-full max-w-sm rounded-3xl p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-stone-900 text-white flex items-center justify-center">
-                  <Lock className="w-4 h-4 text-amber-400" />
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center">
+                  <Lock className="w-4 h-4" />
                 </div>
-                <h3 className="text-sm font-black text-stone-900">Selamat Datang, Selamat Bekerja !</h3>
+                <h3 className="text-sm font-bold text-slate-100">Otorisasi Staff POS</h3>
               </div>
               <button
                 onClick={() => { setIsLoginModalOpen(false); setPinError(''); setPinInput(''); }}
-                className="text-stone-400 hover:text-stone-700"
+                className="text-slate-500 hover:text-slate-300"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (pinInput.trim() === selectedCashierLogin.pin) {
-                setActiveCashier(selectedCashierLogin);
-                setCurrentRole('staff');
-                setIsLoginModalOpen(false);
-                setPinInput('');
-                setPinError('');
-              } else {
-                setPinError(`PIN salah untuk ${selectedCashierLogin.name}!`);
-              }
-            }} className="my-4 space-y-3">
+            <form onSubmit={handleStrictLogin} className="my-4 space-y-3">
               <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">Pilih Nama Kasir:</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Pilih Nama Operator Kasir:</label>
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                   {CASHIERS_LIST.map((c) => (
                     <div
                       key={c.id}
                       onClick={() => {
                         setSelectedCashierLogin(c);
-                        setPinInput(''); // Reset PIN saat ganti user agar aman
+                        setPinInput(''); 
                         setPinError('');
                       }}
-                      className={`p-2 rounded-xl border text-xs flex items-center justify-between cursor-pointer transition ${
+                      className={`p-2.5 rounded-xl border text-xs flex items-center justify-between cursor-pointer transition ${
                         selectedCashierLogin.id === c.id
-                          ? 'border-amber-500 bg-amber-50/70 font-bold text-amber-900'
-                          : 'border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700'
+                          ? 'border-amber-500 bg-amber-500/10 font-bold text-amber-300 shadow-sm'
+                          : 'border-slate-800 bg-slate-900 hover:bg-slate-800 text-slate-300'
                       }`}
                     >
                       <span>{c.name}</span>
-                      <span className="text-[10px] text-stone-400 font-normal">{c.role}</span>
+                      <span className="text-[10px] text-slate-500 font-normal">{c.role}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1 text-center">
-                  Masukkan PIN 4-Digit ({selectedCashierLogin.name})
+              <div className="pt-2">
+                <label className="block text-xs font-bold text-slate-400 mb-2 text-center uppercase tracking-wider">
+                  Masukkan PIN ({selectedCashierLogin.name.split(' ')[0]})
                 </label>
                 <input
                   type="password"
@@ -1616,19 +1668,18 @@ export default function App() {
                   autoFocus
                   placeholder="••••"
                   value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
-                  className="w-full text-center tracking-[1em] text-2xl font-black bg-stone-50 border-2 border-stone-300 rounded-2xl py-2 outline-none focus:border-amber-500"
+                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
+                  className="w-full text-center tracking-[1em] text-2xl font-black bg-slate-900 border border-slate-800 rounded-2xl py-2.5 text-slate-100 outline-none focus:border-amber-500 transition-colors"
                 />
               </div>
 
               {pinError && (
-                <div className="p-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-1.5">
+                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{pinError}</span>
                 </div>
               )}
 
-              {/* Keypad Simulasi yang Aman & Ketat */}
               <div className="grid grid-cols-3 gap-1.5 pt-1">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'OK'].map((keyVal) => (
                   <button
@@ -1639,55 +1690,49 @@ export default function App() {
                         setPinInput('');
                         setPinError('');
                       } else if (keyVal === 'OK') {
-                        if (pinInput.trim() === selectedCashierLogin.pin) {
-                          setActiveCashier(selectedCashierLogin);
-                          setCurrentRole('staff');
-                          setIsLoginModalOpen(false);
-                          setPinInput('');
-                          setPinError('');
-                        } else {
-                          setPinError(`PIN salah untuk ${selectedCashierLogin.name}!`);
-                        }
+                        handleStrictLogin();
                       } else if (pinInput.length < 4) {
                         setPinInput((p) => p + keyVal.toString());
                       }
                     }}
-                    className="py-2 rounded-xl bg-stone-100 hover:bg-stone-200 font-black text-xs text-stone-800 transition active:scale-95"
+                    className={`py-2 rounded-xl font-black text-xs transition active:scale-95 ${
+                      keyVal === 'OK' 
+                        ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-600/30' 
+                        : keyVal === 'C'
+                        ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30 hover:bg-rose-600/30'
+                        : 'bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-200'
+                    }`}
                   >
                     {keyVal}
                   </button>
                 ))}
               </div>
 
-              <div className="bg-amber-50 p-2 rounded-xl border border-amber-200 text-[10px] text-amber-800 text-center">
-                <strong>Masukkan PIN sesuai nama staff yang dipilih!</strong>
-              </div>
-
               <button
                 type="submit"
-                className="w-full py-2.5 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs rounded-xl shadow transition"
+                className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-md mt-2 transition"
               >
-                Masuk sebagai {selectedCashierLogin.name.split(' ')[0]}
+                Otorisasi & Masuk POS
               </button>
             </form>
           </div>
         </div>
       )}  
 
-      {/* MODAL PENGATURAN SHIFT 1 & SHIFT 2 */}
+      {/* MODAL PENGATURAN SHIFT */}
       {isEditShiftModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
-              <h3 className="text-base font-black text-stone-900">Pengaturan Shift & Target Kas</h3>
-              <button onClick={() => setIsEditShiftModalOpen(false)} className="text-stone-400 hover:text-stone-700">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-sm font-bold text-slate-100">Pengaturan Shift & Target Kas</h3>
+              <button onClick={() => setIsEditShiftModalOpen(false)} className="text-slate-500 hover:text-slate-300">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveShiftConfig} className="my-4 space-y-3 text-xs">
+            <form onSubmit={handleSaveShiftConfig} className="my-4 space-y-3.5 text-xs">
               <div>
-                <label className="font-bold text-stone-700 block mb-1">Pilih Shift Restoran</label>
+                <label className="font-semibold text-slate-400 block mb-1">Pilih Shift Restoran</label>
                 <select
                   value={tempShiftForm.shiftName}
                   onChange={(e) => {
@@ -1700,53 +1745,53 @@ export default function App() {
                     }
                     setTempShiftForm({ ...tempShiftForm, shiftName: val, startTime: start, endTime: end });
                   }}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none font-bold"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 outline-none font-bold"
                 >
                   <option value="Shift 1 (Jam 08:00 Pagi)">Shift 1 (Mulai Jam 08:00 Pagi)</option>
                   <option value="Shift 2 (Jam 15:00 / 3 Sore)">Shift 2 (Mulai Jam 15:00 / 3 Sore)</option>
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-bold text-stone-700 block mb-1">Jam Mulai</label>
+                  <label className="font-semibold text-slate-400 block mb-1">Jam Mulai</label>
                   <input
                     type="text"
                     value={tempShiftForm.startTime}
                     onChange={(e) => setTempShiftForm({ ...tempShiftForm, startTime: e.target.value })}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none font-semibold"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-stone-700 block mb-1">Jam Selesai</label>
+                  <label className="font-semibold text-slate-400 block mb-1">Jam Selesai</label>
                   <input
                     type="text"
                     value={tempShiftForm.endTime}
                     onChange={(e) => setTempShiftForm({ ...tempShiftForm, endTime: e.target.value })}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none font-semibold"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="font-bold text-stone-700 block mb-1">Modal Awal Kas (Initial Float)</label>
+                <label className="font-semibold text-slate-400 block mb-1">Modal Awal Kas (Initial Float)</label>
                 <input
                   type="number"
                   value={tempShiftForm.initialFloat}
                   onChange={(e) => setTempShiftForm({ ...tempShiftForm, initialFloat: e.target.value })}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none font-semibold"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-slate-200 outline-none"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-stone-700 block mb-1">
+                <label className="font-semibold text-slate-400 block mb-1">
                   Target Ekspektasi Kas di Laci (Expected Cash)
                 </label>
                 <input
                   type="number"
                   value={tempShiftForm.expectedCash}
                   onChange={(e) => setTempShiftForm({ ...tempShiftForm, expectedCash: e.target.value })}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs font-black text-amber-700 outline-none"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs font-bold text-amber-400 outline-none"
                 />
               </div>
 
@@ -1754,15 +1799,15 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setIsEditShiftModalOpen(false)}
-                  className="w-1/3 py-2.5 border border-stone-200 text-stone-600 rounded-xl font-bold"
+                  className="w-1/3 py-2.5 border border-slate-800 text-slate-400 hover:bg-slate-900 rounded-xl font-bold"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="w-2/3 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-md"
+                  className="w-2/3 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-md transition"
                 >
-                  Simpan Pengaturan
+                  Simpan Shift
                 </button>
               </div>
             </form>
@@ -1772,16 +1817,16 @@ export default function App() {
 
       {/* MERGE TABLE MODAL */}
       {isMergeTableModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
-              <h3 className="font-black text-stone-900 text-sm">Gabung Meja (Merge Table)</h3>
-              <button onClick={() => setIsMergeTableModalOpen(false)} className="text-stone-400 hover:text-stone-700">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-950 border border-slate-800 w-full max-w-sm rounded-3xl p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="font-bold text-slate-100 text-sm">Gabung Meja (Merge Table)</h3>
+              <button onClick={() => setIsMergeTableModalOpen(false)} className="text-slate-500 hover:text-slate-300">
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="my-4 space-y-3 text-xs">
-              <p className="text-stone-600">Pilih meja yang akan digabungkan ke <strong>{selectedTable}</strong>:</p>
+              <p className="text-slate-400">Pilih meja yang akan digabungkan ke <strong className="text-amber-400">{selectedTable}</strong>:</p>
               <div className="grid grid-cols-2 gap-2">
                 {tableList.filter((t) => t !== selectedTable).map((tbl) => (
                   <button
@@ -1791,7 +1836,7 @@ export default function App() {
                       setIsMergeTableModalOpen(false);
                       alert(`Berhasil menggabungkan tagihan ${tbl} ke ${selectedTable}!`);
                     }}
-                    className="p-2.5 bg-stone-50 border border-stone-200 hover:border-amber-500 rounded-xl font-bold text-stone-700 text-left"
+                    className="p-3 bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-xl font-semibold text-slate-200 text-left transition"
                   >
                     + {tbl}
                   </button>
@@ -1802,107 +1847,104 @@ export default function App() {
         </div>
       )}
 
-     {/* PAYMENT MODAL */}
+      {/* PAYMENT MODAL */}
       {isPaymentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-lg rounded-3xl p-6 shadow-2xl overflow-y-auto max-h-[92vh]">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-950 border border-slate-800 w-full max-w-lg rounded-3xl p-6 shadow-2xl overflow-y-auto max-h-[92vh]">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <div>
-                <h3 className="text-base font-black text-stone-900">Pembayaran Transaksi</h3>
-                <p className="text-xs text-stone-500">
-                  Meja: {selectedTable} &bull; Total: {formatRupiah(grandTotal)}
+                <h3 className="text-base font-bold text-slate-100">Pembayaran Tagihan</h3>
+                <p className="text-xs text-slate-400">
+                  Meja: {selectedTable} &bull; Total: <strong className="text-amber-400">{formatRupiah(grandTotal)}</strong>
                 </p>
               </div>
-              <button onClick={() => setIsPaymentModalOpen(false)} className="text-stone-400 hover:text-stone-700">
+              <button onClick={() => setIsPaymentModalOpen(false)} className="text-slate-500 hover:text-slate-300">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Grid tombol pembayaran disesuaikan jumlah kolomnya jika Tunai disembunyikan untuk customer */}
             <div className={`grid gap-2 my-4 ${currentRole === 'staff' ? 'grid-cols-4' : 'grid-cols-3'}`}>
               <button
                 onClick={() => setPaymentType('qris')}
-                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-bold gap-1 transition ${
+                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-semibold gap-1.5 transition ${
                   paymentType === 'qris'
-                    ? 'border-amber-500 bg-amber-50 text-amber-900 shadow-sm'
-                    : 'border-stone-200 text-stone-600 hover:bg-stone-50'
+                    ? 'border-amber-500 bg-amber-500/10 text-amber-300 shadow-sm'
+                    : 'border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-800'
                 }`}
               >
-                <QrCode className="w-5 h-5 text-amber-600" />
+                <QrCode className="w-5 h-5 text-amber-400" />
                 QRIS
               </button>
 
-              {/* Opsi Tunai HANYA MUNCUL untuk Staff/Kasir */}
               {currentRole === 'staff' && (
                 <button
                   onClick={() => setPaymentType('cash')}
-                  className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-bold transition ${
+                  className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-semibold transition ${
                     paymentType === 'cash'
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm'
-                      : 'border-stone-200 text-stone-600 hover:bg-stone-50'
+                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-300 shadow-sm'
+                      : 'border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-800'
                   }`}
                 >
-                  <Banknote className="w-5 h-5 text-emerald-600" />
+                  <Banknote className="w-5 h-5 text-emerald-400" />
                   Tunai
                 </button>
               )}
 
               <button
                 onClick={() => setPaymentType('ewallet')}
-                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-bold gap-1 transition ${
+                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-semibold gap-1.5 transition ${
                   paymentType === 'ewallet'
-                    ? 'border-blue-500 bg-blue-50 text-blue-900 shadow-sm'
-                    : 'border-stone-200 text-stone-600 hover:bg-stone-50'
+                    ? 'border-blue-500 bg-blue-500/10 text-blue-300 shadow-sm'
+                    : 'border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-800'
                 }`}
               >
-                <Smartphone className="w-5 h-5 text-blue-600" />
+                <Smartphone className="w-5 h-5 text-blue-400" />
                 E-Wallet
               </button>
               <button
                 onClick={() => setPaymentType('card')}
-                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-bold gap-1 transition ${
+                className={`flex flex-col items-center justify-center p-3 rounded-2xl border text-xs font-semibold gap-1.5 transition ${
                   paymentType === 'card'
-                    ? 'border-purple-500 bg-purple-50 text-purple-900 shadow-sm'
-                    : 'border-stone-200 text-stone-600 hover:bg-stone-50'
+                    ? 'border-purple-500 bg-purple-500/10 text-purple-300 shadow-sm'
+                    : 'border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-800'
                 }`}
               >
-                <CreditCard className="w-5 h-5 text-purple-600" />
-                Kartu EDC
+                <CreditCard className="w-5 h-5 text-purple-400" />
+                EDC Card
               </button>
             </div>
 
-            <div className="bg-stone-50 p-4 rounded-2xl border border-stone-200 min-h-[200px] flex flex-col justify-center">
+            <div className="bg-slate-900 p-4 rounded-2xl border border-slate-800 min-h-[200px] flex flex-col justify-center">
               {paymentType === 'qris' && (
                 <div className="flex flex-col items-center text-center space-y-3">
-                  <div className="bg-white p-3 rounded-2xl border-2 border-stone-900 shadow-inner">
+                  <div className="bg-white p-3 rounded-2xl border-2 border-slate-950 shadow-inner">
                     <svg className="w-32 h-32" viewBox="0 0 100 100" fill="none">
                       <rect width="100" height="100" fill="white" />
-                      <path fill="#1c1917" d="M10,10 h25 v25 h-25 z M15,15 v15 h15 v-15 z M19,19 h7 v7 h-7 z" />
-                      <path fill="#1c1917" d="M65,10 h25 v25 h-25 z M70,15 v15 h15 v-15 z M74,19 h7 v7 h-7 z" />
-                      <path fill="#1c1917" d="M10,65 h25 v25 h-25 z M15,70 v15 h15 v-15 z M19,74 h7 v7 h-7 z" />
-                      <rect x="42" y="15" width="16" height="6" fill="#1c1917" />
-                      <rect x="42" y="28" width="8" height="12" fill="#1c1917" />
-                      <rect x="55" y="32" width="15" height="6" fill="#1c1917" />
-                      <rect x="38" y="50" width="24" height="6" fill="#1c1917" />
-                      <rect x="45" y="65" width="10" height="20" fill="#1c1917" />
-                      <rect x="65" y="60" width="22" height="6" fill="#1c1917" />
-                      <rect x="75" y="75" width="15" height="15" fill="#1c1917" />
+                      <path fill="#020617" d="M10,10 h25 v25 h-25 z M15,15 v15 h15 v-15 z M19,19 h7 v7 h-7 z" />
+                      <path fill="#020617" d="M65,10 h25 v25 h-25 z M70,15 v15 h15 v-15 z M74,19 h7 v7 h-7 z" />
+                      <path fill="#020617" d="M10,65 h25 v25 h-25 z M15,70 v15 h15 v-15 z M19,74 h7 v7 h-7 z" />
+                      <rect x="42" y="15" width="16" height="6" fill="#020617" />
+                      <rect x="42" y="28" width="8" height="12" fill="#020617" />
+                      <rect x="55" y="32" width="15" height="6" fill="#020617" />
+                      <rect x="38" y="50" width="24" height="6" fill="#020617" />
+                      <rect x="45" y="65" width="10" height="20" fill="#020617" />
+                      <rect x="65" y="60" width="22" height="6" fill="#020617" />
+                      <rect x="75" y="75" width="15" height="15" fill="#020617" />
                     </svg>
                   </div>
                   <div>
-                    <span className="inline-block bg-amber-100 text-amber-900 text-[11px] font-bold px-3 py-1 rounded-full">
+                    <span className="inline-block bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[11px] font-bold px-3 py-1 rounded-full">
                       Batas Waktu: {Math.floor(qrisTimer / 60)}:{(qrisTimer % 60).toString().padStart(2, '0')}
                     </span>
-                    <p className="text-xs text-stone-500 mt-1">Scan via BCA, GoPay, OVO, ShopeePay, DANA, atau Livin</p>
+                    <p className="text-xs text-slate-400 mt-1">Scan via BCA, GoPay, OVO, ShopeePay, DANA, atau Livin</p>
                   </div>
                 </div>
               )}
 
-              {/* Form Tunai HANYA MUNCUL untuk Staff/Kasir */}
               {currentRole === 'staff' && paymentType === 'cash' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                    <label className="block text-xs font-semibold text-slate-400 mb-1">
                       Uang Tunai Diterima (Rp):
                     </label>
                     <input
@@ -1910,7 +1952,7 @@ export default function App() {
                       placeholder={grandTotal.toString()}
                       value={cashTendered}
                       onChange={(e) => setCashTendered(e.target.value)}
-                      className="w-full text-lg font-black bg-white border border-stone-300 rounded-xl px-4 py-2 outline-none focus:border-emerald-500"
+                      className="w-full text-lg font-black bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-slate-100 outline-none focus:border-emerald-500"
                     />
                   </div>
                   <div className="flex gap-1.5 flex-wrap">
@@ -1918,35 +1960,35 @@ export default function App() {
                       <button
                         key={nominal}
                         onClick={() => setCashTendered(nominal.toString())}
-                        className="text-xs bg-white hover:bg-emerald-50 hover:text-emerald-700 border border-stone-200 px-2.5 py-1 rounded-lg font-bold transition"
+                        className="text-xs bg-slate-950 hover:bg-emerald-500/10 hover:text-emerald-300 border border-slate-800 px-2.5 py-1.5 rounded-lg font-semibold text-slate-300 transition"
                       >
                         {nominal === grandTotal ? 'Uang Pas' : formatRupiah(nominal)}
                       </button>
                     ))}
                   </div>
-                  <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl flex items-center justify-between">
-                    <span className="text-xs font-bold text-emerald-900">Uang Kembalian:</span>
-                    <span className="text-base font-black text-emerald-800">{formatRupiah(cashChange)}</span>
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 p-3.5 rounded-xl flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-400">Kembalian:</span>
+                    <span className="text-base font-black text-emerald-300">{formatRupiah(cashChange)}</span>
                   </div>
                 </div>
               )}
 
               {paymentType === 'ewallet' && (
                 <div className="space-y-3">
-                  <p className="text-xs font-semibold text-stone-600">Pilih Dompet Digital:</p>
+                  <p className="text-xs font-semibold text-slate-400">Pilih Dompet Digital:</p>
                   <div className="grid grid-cols-2 gap-2">
                     {['GoPay', 'OVO', 'ShopeePay', 'DANA'].map((brand) => (
                       <button
                         key={brand}
                         onClick={() => setEWalletBrand(brand)}
-                        className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between ${
+                        className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between ${
                           eWalletBrand === brand
-                            ? 'border-blue-500 bg-white text-blue-800 shadow-sm'
-                            : 'border-stone-200 bg-stone-100 text-stone-600'
+                            ? 'border-blue-500 bg-blue-500/10 text-blue-300 shadow-sm'
+                            : 'border-slate-800 bg-slate-950 text-slate-400'
                         }`}
                       >
                         <span>{brand}</span>
-                        {eWalletBrand === brand && <CheckCircle2 className="w-4 h-4 text-blue-600" />}
+                        {eWalletBrand === brand && <CheckCircle2 className="w-4 h-4 text-blue-400" />}
                       </button>
                     ))}
                   </div>
@@ -1955,10 +1997,10 @@ export default function App() {
 
               {paymentType === 'card' && (
                 <div className="text-center py-4 space-y-2">
-                  <CreditCard className="w-10 h-10 text-purple-600 mx-auto" />
-                  <h4 className="font-bold text-xs text-stone-800">Gesek atau Tap pada EDC</h4>
-                  <p className="text-[11px] text-stone-500 max-w-xs mx-auto">
-                    Mendukung Debit BCA, BRI, Mandiri, BNI serta Visa / Mastercard contactless.
+                  <CreditCard className="w-10 h-10 text-purple-400 mx-auto" />
+                  <h4 className="font-bold text-xs text-slate-200">Gesek / Tap pada Mesin EDC</h4>
+                  <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+                    Mendukung seluruh kartu debit dan kredit berlogo Visa, Mastercard, dan GPN.
                   </p>
                 </div>
               )}
@@ -1967,13 +2009,13 @@ export default function App() {
             <div className="mt-5 flex gap-2">
               <button
                 onClick={() => setIsPaymentModalOpen(false)}
-                className="w-1/3 py-3 border border-stone-200 hover:bg-stone-100 rounded-xl text-xs font-bold text-stone-600"
+                className="w-1/3 py-3 border border-slate-800 hover:bg-slate-900 rounded-xl text-xs font-bold text-slate-400"
               >
                 Batal
               </button>
               <button
                 onClick={() => handleCheckoutSuccess(currentRole === 'customer')}
-                className="w-2/3 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5 transition"
+                className="w-2/3 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-1.5 transition"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 Selesaikan Pembayaran
@@ -1985,29 +2027,29 @@ export default function App() {
 
       {/* SPLIT BILL MODAL */}
       {isSplitBillModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
-              <h3 className="text-base font-black text-stone-900">Pemisahan Tagihan (Split Bill)</h3>
-              <button onClick={() => setIsSplitBillModalOpen(false)} className="text-stone-400 hover:text-stone-700">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-sm font-bold text-slate-100">Pemisahan Tagihan (Split Bill)</h3>
+              <button onClick={() => setIsSplitBillModalOpen(false)} className="text-slate-500 hover:text-slate-300">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="my-4 space-y-4">
-              <div className="flex bg-stone-100 p-1 rounded-xl">
+              <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
                 <button
                   onClick={() => setSplitMethod('equal')}
-                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${
-                    splitMethod === 'equal' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600'
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${
+                    splitMethod === 'equal' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400'
                   }`}
                 >
                   Bagi Rata (Equal)
                 </button>
                 <button
                   onClick={() => setSplitMethod('item')}
-                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition ${
-                    splitMethod === 'item' ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-600'
+                  className={`flex-1 py-2 text-xs font-bold rounded-lg transition ${
+                    splitMethod === 'item' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400'
                   }`}
                 >
                   Per Item Pesanan
@@ -2017,41 +2059,40 @@ export default function App() {
               {splitMethod === 'equal' ? (
                 <div className="space-y-4">
                   <div>
-                    <label className="text-xs font-bold text-stone-700 block mb-2">Jumlah Tamu yang Membayar:</label>
+                    <label className="text-xs font-semibold text-slate-400 block mb-2">Jumlah Tamu Pembayar:</label>
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => setSplitPersons(Math.max(2, splitPersons - 1))}
-                        className="w-9 h-9 rounded-xl bg-stone-100 flex items-center justify-center font-bold text-stone-700"
+                        className="w-9 h-9 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center font-bold text-slate-200"
                       >
                         -
                       </button>
-                      <span className="font-black text-lg text-stone-800">{splitPersons} Orang</span>
+                      <span className="font-black text-lg text-slate-100">{splitPersons} Orang</span>
                       <button
                         onClick={() => setSplitPersons(splitPersons + 1)}
-                        className="w-9 h-9 rounded-xl bg-stone-100 flex items-center justify-center font-bold text-stone-700"
+                        className="w-9 h-9 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center font-bold text-slate-200"
                       >
                         +
                       </button>
                     </div>
                   </div>
 
-                  <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl">
-                    <p className="text-xs text-amber-800 font-semibold">Nominal Tiap Orang:</p>
-                    <p className="text-xl font-black text-amber-900 mt-1">
+                  <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl">
+                    <p className="text-xs text-amber-400 font-semibold">Nominal per Orang:</p>
+                    <p className="text-xl font-black text-amber-300 mt-1">
                       {formatRupiah(Math.ceil(grandTotal / splitPersons))}
                     </p>
-                    <p className="text-[11px] text-amber-700 mt-1">Total asli: {formatRupiah(grandTotal)}</p>
+                    <p className="text-[11px] text-slate-400 mt-1">Total asli: {formatRupiah(grandTotal)}</p>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {cart.map((item) => (
-                    <div key={item.id} className="flex justify-between items-center text-xs p-2 bg-stone-50 rounded-lg">
+                    <div key={item.id} className="flex justify-between items-center text-xs p-2.5 bg-slate-900 border border-slate-800 rounded-xl text-slate-300">
                       <span>{item.name} ({item.quantity}x)</span>
-                      <span className="font-bold">{formatRupiah(item.price * item.quantity)}</span>
+                      <span className="font-bold text-slate-200">{formatRupiah(item.price * item.quantity)}</span>
                     </div>
                   ))}
-                  <p className="text-[11px] text-stone-400 italic">Dapat ditagihkan terpisah langsung saat penerimaan kasir.</p>
                 </div>
               )}
             </div>
@@ -2061,9 +2102,9 @@ export default function App() {
                 setIsSplitBillModalOpen(false);
                 setIsPaymentModalOpen(true);
               }}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition"
+              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold text-xs transition shadow-md"
             >
-              Lanjutkan ke Kasir Pembayaran
+              Lanjutkan Pembayaran
             </button>
           </div>
         </div>
@@ -2071,39 +2112,39 @@ export default function App() {
 
       {/* RECEIPT MODAL */}
       {isReceiptModalOpen && lastProcessedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl overflow-y-auto max-h-[92vh]">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
-              <div className="flex items-center gap-2 text-emerald-600 font-bold text-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl overflow-y-auto max-h-[92vh]">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
                 <CheckCircle2 className="w-5 h-5" />
-                <span>Transaksi Selesai & Berhasil</span>
+                <span>Transaksi Berhasil & Lunas</span>
               </div>
-              <button onClick={() => setIsReceiptModalOpen(false)} className="text-stone-400 hover:text-stone-700">
+              <button onClick={() => setIsReceiptModalOpen(false)} className="text-slate-500 hover:text-slate-300">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="my-4 bg-stone-50 p-4 rounded-xl border border-dashed border-stone-300 font-mono text-xs text-stone-800 space-y-2">
-              <div className="text-center border-b border-dashed border-stone-300 pb-2">
-                <h4 className="font-black text-sm tracking-wider">RESTO MENUKU NUSANTARA</h4>
-                <p className="text-[10px] text-stone-500">Jl. Kuliner Utama No. 88, Jakarta</p>
+            <div className="my-4 bg-slate-900 p-4 rounded-2xl border border-dashed border-slate-700 font-mono text-xs text-slate-300 space-y-2">
+              <div className="text-center border-b border-dashed border-slate-700 pb-2">
+                <h4 className="font-black text-sm tracking-wider text-slate-100">RESTO MENUKU NUSANTARA</h4>
+                <p className="text-[10px] text-slate-400">Executive Dining & POS System</p>
               </div>
 
-              <div className="flex justify-between text-[10px] text-stone-500">
+              <div className="flex justify-between text-[10px] text-slate-400">
                 <span>{lastProcessedOrder.orderId}</span>
                 <span>{lastProcessedOrder.date} {lastProcessedOrder.time}</span>
               </div>
-              <div className="flex justify-between text-[10px] text-stone-500">
+              <div className="flex justify-between text-[10px] text-slate-400">
                 <span>Meja: {lastProcessedOrder.table}</span>
-                <span>Kasir: <strong>{lastProcessedOrder.cashier}</strong></span>
+                <span>Kasir: <strong className="text-slate-200">{lastProcessedOrder.cashier}</strong></span>
               </div>
 
-              <div className="border-t border-dashed border-stone-300 pt-2 space-y-1">
+              <div className="border-t border-dashed border-slate-700 pt-2 space-y-1">
                 {lastProcessedOrder.items.map((item, idx) => (
                   <div key={idx} className="flex justify-between text-[11px]">
                     <div>
-                      <p className="font-bold">{item.name}</p>
-                      <p className="text-[10px] text-stone-500">
+                      <p className="font-bold text-slate-200">{item.name}</p>
+                      <p className="text-[10px] text-slate-400">
                         {item.quantity} x {formatRupiah(item.price)}
                         {item.note ? ` (${item.note})` : ''}
                       </p>
@@ -2113,7 +2154,7 @@ export default function App() {
                 ))}
               </div>
 
-              <div className="border-t border-dashed border-stone-300 pt-2 space-y-1 text-[11px]">
+              <div className="border-t border-dashed border-slate-700 pt-2 space-y-1 text-[11px]">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
                   <span>{formatRupiah(lastProcessedOrder.subtotal)}</span>
@@ -2126,21 +2167,21 @@ export default function App() {
                   <span>Layanan:</span>
                   <span>{formatRupiah(lastProcessedOrder.serviceFee)}</span>
                 </div>
-                <div className="flex justify-between font-black text-xs pt-1 border-t border-stone-300">
+                <div className="flex justify-between font-black text-xs pt-1 border-t border-slate-700 text-amber-400">
                   <span>GRAND TOTAL:</span>
                   <span>{formatRupiah(lastProcessedOrder.grandTotal)}</span>
                 </div>
-                <div className="flex justify-between text-[10px] text-stone-600 pt-1">
-                  <span>Metode Bayar:</span>
+                <div className="flex justify-between text-[10px] text-slate-400 pt-1">
+                  <span>Metode:</span>
                   <span>{lastProcessedOrder.paymentMethod}</span>
                 </div>
                 {lastProcessedOrder.cashGiven && (
                   <>
-                    <div className="flex justify-between text-[10px] text-stone-600">
-                      <span>Tunai Diberikan:</span>
+                    <div className="flex justify-between text-[10px] text-slate-400">
+                      <span>Tunai:</span>
                       <span>{formatRupiah(lastProcessedOrder.cashGiven)}</span>
                     </div>
-                    <div className="flex justify-between text-[10px] text-stone-600">
+                    <div className="flex justify-between text-[10px] text-slate-400">
                       <span>Kembalian:</span>
                       <span>{formatRupiah(lastProcessedOrder.cashChange)}</span>
                     </div>
@@ -2152,20 +2193,20 @@ export default function App() {
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => window.print()}
-                className="flex items-center justify-center gap-1.5 py-2.5 bg-stone-900 text-white rounded-xl text-xs font-bold hover:bg-stone-800 transition"
+                className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-900 border border-slate-800 text-slate-200 rounded-xl text-xs font-bold hover:bg-slate-800 transition"
               >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Cetak Struk Tamu</span>
+                <Printer className="w-3.5 h-3.5 text-amber-400" />
+                <span>Cetak Struk</span>
               </button>
 
               <button
                 onClick={() => {
-                  alert(`Tiket Pesanan Dapur untuk ${lastProcessedOrder.table} berhasil dikirim ke printer dapur!`);
+                  alert(`Tiket Pesanan Dapur untuk ${lastProcessedOrder.table} berhasil dikirim!`);
                 }}
-                className="flex items-center justify-center gap-1.5 py-2.5 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 transition"
+                className="flex items-center justify-center gap-1.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition shadow-md"
               >
                 <ChefHat className="w-3.5 h-3.5" />
-                <span>Kirim Tiket Dapur</span>
+                <span>Kirim Dapur</span>
               </button>
             </div>
           </div>
@@ -2174,20 +2215,20 @@ export default function App() {
 
       {/* CUSTOMER CONFIRMATION MODAL */}
       {isCustomerOrderDoneModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 text-center space-y-4 shadow-2xl">
-            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-950 border border-slate-800 w-full max-w-sm rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
               <Check className="w-8 h-8" />
             </div>
             <div>
-              <h3 className="text-lg font-black text-stone-900">Pesanan Berhasil Dikirim!</h3>
-              <p className="text-xs text-stone-500 mt-1">
-                Pesanan Anda untuk <strong>{selectedTable}</strong> telah tercatat di Sistem dan diteruskan ke kasir & dapur.
+              <h3 className="text-base font-bold text-slate-100">Pesanan Berhasil Dikirim</h3>
+              <p className="text-xs text-slate-400 mt-1">
+                Pesanan untuk meja <strong className="text-amber-400">{selectedTable}</strong> telah masuk ke sistem antrean dapur.
               </p>
             </div>
             <button
               onClick={() => setIsCustomerOrderDoneModalOpen(false)}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition shadow-md shadow-amber-500/20"
+              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition shadow-md"
             >
               Kembali ke Menu
             </button>
@@ -2197,84 +2238,84 @@ export default function App() {
 
       {/* MENU FORM MODAL (CRUD SUPABASE) */}
       {isMenuFormModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-200">
-              <h3 className="text-base font-black text-stone-900">
-                {editingProduct ? 'Ubah Menu' : 'Tambah Menu Baru'}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-sm font-bold text-slate-100">
+                {editingProduct ? 'Ubah Detail Menu' : 'Tambah Menu Baru'}
               </h3>
-              <button onClick={() => setIsMenuFormModalOpen(false)} className="text-stone-400 hover:text-stone-700">
+              <button onClick={() => setIsMenuFormModalOpen(false)} className="text-slate-500 hover:text-slate-300">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="my-4 space-y-3 text-xs">
+            <form onSubmit={handleSaveProduct} className="my-4 space-y-3.5 text-xs">
               <div>
-                <label className="font-bold text-stone-700 block mb-1">Nama Hidangan / Minuman</label>
+                <label className="font-semibold text-slate-400 block mb-1">Nama Hidangan / Minuman</label>
                 <input
                   type="text"
                   required
-                  placeholder="Contoh: Nasi Goreng Sambal Matah"
+                  placeholder="Contoh: Wagyu Beef Steak"
                   value={productFormData.name}
                   onChange={(e) => setProductFormData({ ...productFormData, name: e.target.value })}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-amber-500"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 outline-none focus:border-amber-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-bold text-stone-700 block mb-1">Kategori</label>
+                  <label className="font-semibold text-slate-400 block mb-1">Kategori</label>
                   <select
                     value={productFormData.category}
                     onChange={(e) => setProductFormData({ ...productFormData, category: e.target.value })}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 outline-none font-semibold"
                   >
                     <option value="Makanan">Makanan</option>
                     <option value="Minuman">Minuman</option>
                   </select>
                 </div>
                 <div>
-                  <label className="font-bold text-stone-700 block mb-1">Jumlah Stok Porsi</label>
+                  <label className="font-semibold text-slate-400 block mb-1">Stok Porsi</label>
                   <input
                     type="number"
                     required
-                    placeholder="20"
+                    placeholder="25"
                     value={productFormData.stock}
                     onChange={(e) => setProductFormData({ ...productFormData, stock: e.target.value })}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-amber-500"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 outline-none focus:border-amber-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="font-bold text-stone-700 block mb-1">Harga Jual (Rp)</label>
+                <label className="font-semibold text-slate-400 block mb-1">Harga Jual (Rp)</label>
                 <input
                   type="number"
                   required
-                  placeholder="35000"
+                  placeholder="45000"
                   value={productFormData.price}
                   onChange={(e) => setProductFormData({ ...productFormData, price: e.target.value })}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-amber-500"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 outline-none focus:border-amber-500"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-stone-700 block mb-1">Deskripsi Singkat</label>
+                <label className="font-semibold text-slate-400 block mb-1">Deskripsi Singkat</label>
                 <textarea
                   rows={2}
                   value={productFormData.description}
                   onChange={(e) => setProductFormData({ ...productFormData, description: e.target.value })}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-amber-500"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 outline-none focus:border-amber-500"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-stone-700 block mb-1">URL Foto (Opsional)</label>
+                <label className="font-semibold text-slate-400 block mb-1">URL Gambar / Foto</label>
                 <input
                   type="url"
                   value={productFormData.image}
                   onChange={(e) => setProductFormData({ ...productFormData, image: e.target.value })}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-xs outline-none focus:border-amber-500"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 outline-none focus:border-amber-500"
                 />
               </div>
 
@@ -2282,15 +2323,15 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setIsMenuFormModalOpen(false)}
-                  className="w-1/3 py-2.5 border border-stone-200 text-stone-600 rounded-xl font-bold"
+                  className="w-1/3 py-2.5 border border-slate-800 text-slate-400 hover:bg-slate-900 rounded-xl font-bold"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
-                  className="w-2/3 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-md shadow-amber-500/20 transition"
+                  className="w-2/3 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-bold shadow-md transition"
                 >
-                  Simpan
+                  Simpan Menu
                 </button>
               </div>
             </form>
