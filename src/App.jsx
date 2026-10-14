@@ -481,7 +481,6 @@ export default function App() {
       'ID Order', 
       'Waktu Transaksi', 
       'Meja', 
-      'Nama Tamu', 
       'Metode Bayar', 
       'Status Pesanan', 
       'Subtotal (Rp)', 
