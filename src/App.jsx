@@ -2127,128 +2127,121 @@ export default function App() {
       )}
 
       {isReceiptModalOpen && lastProcessedOrder && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-5 sm:p-6 shadow-2xl my-auto max-h-[92vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
-                <CheckCircle2 className="w-5 h-5" />
-                <span>Transaksi Berhasil & Lunas</span>
-              </div>
-              <button onClick={() => setIsReceiptModalOpen(false)} className="text-slate-500 hover:text-slate-300">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="my-4 bg-slate-900 p-4 rounded-2xl border border-dashed border-slate-700 font-mono text-xs text-slate-300 space-y-2 overflow-y-auto flex-1">
-              <div className="text-center border-b border-dashed border-slate-700 pb-2">
-                <h4 className="font-black text-sm tracking-wider text-slate-100">RESTO MENUKU NUSANTARA</h4>
-                <p className="text-[10px] text-slate-400">Executive Dining & POS System</p>
-              </div>
-
-              <div className="flex justify-between text-[10px] text-slate-400">
-                <span>{lastProcessedOrder.orderId}</span>
-                <span>{lastProcessedOrder.date} {lastProcessedOrder.time}</span>
-              </div>
-              <div className="flex justify-between text-[10px] text-slate-400">
-                <span>Meja: {lastProcessedOrder.table}</span>
-                <span>Kasir: <strong className="text-slate-200">{lastProcessedOrder.cashier}</strong></span>
-              </div>
-
-              <div className="border-t border-dashed border-slate-700 pt-2 space-y-1">
-                {lastProcessedOrder.items.map((item, idx) => (
-                  <div key={idx} className="flex justify-between text-[11px]">
-                    <div>
-                      <p className="font-bold text-slate-200">{item.name}</p>
-                      <p className="text-[10px] text-slate-400">
-                        {item.quantity} x {formatRupiah(item.price)}
-                        {item.note ? ` (${item.note})` : ''}
-                      </p>
-                    </div>
-                    <span>{formatRupiah(item.price * item.quantity)}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="border-t border-dashed border-slate-700 pt-2 space-y-1 text-[11px]">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>{formatRupiah(lastProcessedOrder.subtotal)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Pajak (PB1 10%):</span>
-                  <span>{formatRupiah(lastProcessedOrder.taxAmount)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Layanan:</span>
-                  <span>{formatRupiah(lastProcessedOrder.serviceFee)}</span>
-                </div>
-                <div className="flex justify-between font-black text-xs pt-1 border-t border-slate-700 text-amber-400">
-                  <span>GRAND TOTAL:</span>
-                  <span>{formatRupiah(lastProcessedOrder.grandTotal)}</span>
-                </div>
-                <div className="flex justify-between text-[10px] text-slate-400 pt-1">
-                  <span>Metode:</span>
-                  <span>{lastProcessedOrder.paymentMethod}</span>
-                </div>
-                {lastProcessedOrder.cashGiven && (
-                  <>
-                    <div className="flex justify-between text-[10px] text-slate-400">
-                      <span>Tunai:</span>
-                      <span>{formatRupiah(lastProcessedOrder.cashGiven)}</span>
-                    </div>
-                    <div className="flex justify-between text-[10px] text-slate-400">
-                      <span>Kembalian:</span>
-                      <span>{formatRupiah(lastProcessedOrder.cashChange)}</span>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 shrink-0">
-              <button
-                onClick={() => window.print()}
-                className="flex items-center justify-center gap-1.5 py-2.5 bg-slate-900 border border-slate-800 text-slate-200 rounded-xl text-xs font-bold hover:bg-slate-800 transition"
-              >
-                <Printer className="w-3.5 h-3.5 text-amber-400" />
-                <span>Cetak Struk</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  alert(`Tiket Pesanan Dapur untuk ${lastProcessedOrder.table} berhasil dikirim!`);
-                }}
-                className="flex items-center justify-center gap-1.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition shadow-md"
-              >
-                <ChefHat className="w-3.5 h-3.5" />
-                <span>Kirim Dapur</span>
-              </button>
-            </div>
-          </div>
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
+    <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-5 sm:p-6 shadow-2xl my-auto max-h-[92vh] flex flex-col">
+      
+      {/* Tombol Tutup (Disembunyikan saat dicetak) */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0 no-print">
+        <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+          <CheckCircle2 className="w-5 h-5" />
+          <span>Transaksi Berhasil & Lunas</span>
         </div>
-      )}
+        <button onClick={() => setIsReceiptModalOpen(false)} className="text-slate-500 hover:text-slate-300">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
-      {isCustomerOrderDoneModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="bg-slate-950 border border-slate-800 w-full max-w-sm rounded-3xl p-6 text-center space-y-4 shadow-2xl">
-            <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
-              <Check className="w-8 h-8" />
-            </div>
-            <div>
-              <h3 className="text-base font-bold text-slate-100">Pesanan Berhasil Dikirim</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Pesanan untuk meja <strong className="text-amber-400">{selectedTable}</strong> telah masuk ke sistem antrean dapur.
-              </p>
-            </div>
-            <button
-              onClick={() => setIsCustomerOrderDoneModalOpen(false)}
-              className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition shadow-md"
-            >
-              Kembali ke Menu
-            </button>
-          </div>
+      {/* AREA UTAMA STRUK YANG SIAP DICETAK */}
+      <div 
+        id="printable-receipt" 
+        className="my-4 bg-white text-slate-900 p-5 rounded-2xl border border-dashed border-slate-300 font-mono text-xs space-y-2.5 overflow-y-auto flex-1 shadow-sm"
+      >
+        <div className="text-center border-b border-dashed border-slate-300 pb-3">
+          <h4 className="font-black text-sm tracking-widest text-slate-900">RESTO NUSANTARA KELOMPOK C</h4>
+          <p className="text-[10px] text-slate-600">Executive Dining Experience </p>
+          <p className="text-[9px] text-slate-500 mt-0.5">Kawasan Industri Cikarang, Bekasi</p>
         </div>
-      )}
+
+        <div className="flex justify-between text-[10px] text-slate-600 border-b border-dashed border-slate-200 pb-2">
+          <span>Nota: <strong className="text-slate-900">{lastProcessedOrder.orderId}</strong></span>
+          <span>{lastProcessedOrder.date} {lastProcessedOrder.time}</span>
+        </div>
+        <div className="flex justify-between text-[10px] text-slate-600 pb-1">
+          <span>Meja: <strong className="text-slate-900">{lastProcessedOrder.table}</strong></span>
+          <span>Kasir: <strong className="text-slate-900">{lastProcessedOrder.cashier}</strong></span>
+        </div>
+
+        <div className="border-t border-dashed border-slate-300 pt-2 space-y-1.5">
+          {lastProcessedOrder.items.map((item, idx) => (
+            <div key={idx} className="flex justify-between text-[11px]">
+              <div>
+                <p className="font-bold text-slate-900">{item.name}</p>
+                <p className="text-[10px] text-slate-600">
+                  {item.quantity} x {formatRupiah(item.price)}
+                  {item.note ? ` (${item.note})` : ''}
+                </p>
+              </div>
+              <span className="font-semibold text-slate-900">{formatRupiah(item.price * item.quantity)}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="border-t border-dashed border-slate-300 pt-2.5 space-y-1 text-[11px]">
+          <div className="flex justify-between text-slate-600">
+            <span>Subtotal:</span>
+            <span>{formatRupiah(lastProcessedOrder.subtotal)}</span>
+          </div>
+          <div className="flex justify-between text-slate-600">
+            <span>Pajak (PB1 10%):</span>
+            <span>{formatRupiah(lastProcessedOrder.taxAmount)}</span>
+          </div>
+          <div className="flex justify-between text-slate-600">
+            <span>Layanan:</span>
+            <span>{formatRupiah(lastProcessedOrder.serviceFee)}</span>
+          </div>
+          <div className="flex justify-between font-black text-xs pt-1.5 border-t border-slate-900 text-slate-900">
+            <span>GRAND TOTAL:</span>
+            <span>{formatRupiah(lastProcessedOrder.grandTotal)}</span>
+          </div>
+          <div className="flex justify-between text-[10px] text-slate-600 pt-1">
+            <span>Metode Bayar:</span>
+            <span>{lastProcessedOrder.paymentMethod}</span>
+          </div>
+          {lastProcessedOrder.cashGiven && (
+            <>
+              <div className="flex justify-between text-[10px] text-slate-600">
+                <span>Tunai Diterima:</span>
+                <span>{formatRupiah(lastProcessedOrder.cashGiven)}</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-600 font-bold">
+                <span>Kembalian:</span>
+                <span>{formatRupiah(lastProcessedOrder.cashChange)}</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="text-center pt-3 border-t border-dashed border-slate-300 text-[10px] text-slate-500">
+          <p>Terima kasih atas kunjungan Anda!</p>
+          <p className="mt-0.5">Barang yang sudah dibeli tidak dapat ditukar.</p>
+        </div>
+      </div>
+
+      {/* Tombol Aksi Bawah (Disembunyikan saat dicetak dengan kelas no-print) */}
+      <div className="grid grid-cols-2 gap-2 shrink-0 no-print">
+        <button
+          onClick={() => window.print()}
+          className="flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md transition"
+        >
+          <Printer className="w-4 h-4" />
+          <span>Cetak Struk Sekarang</span>
+        </button>
+
+        <button
+          onClick={() => {
+            alert(`Tiket Pesanan Dapur untuk ${lastProcessedOrder.table} berhasil dikirim!`);
+            setIsReceiptModalOpen(false);
+          }}
+          className="flex items-center justify-center gap-1.5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold transition shadow-md"
+        >
+          <ChefHat className="w-4 h-4" />
+          <span>Selesai & Tutup</span>
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
 
       {isMenuFormModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
