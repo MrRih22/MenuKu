@@ -33,7 +33,8 @@ import {
   Bell,
   Check,
   UserCheck,
-  Download
+  Download,
+  Truck
 } from 'lucide-react';
 
 const CASHIERS_LIST = [
@@ -275,7 +276,6 @@ export default function App() {
   const handleCheckoutSuccess = async (isCustomerOrder = false) => {
     if (cart.length === 0) return;
 
-    // --- VALIDASI KONKURENSI STOK TERAKHIR KE SUPABASE ---
     for (const cartItem of cart) {
       const { data: latestMenu, error: fetchError } = await supabase
         .from('menus')
@@ -289,14 +289,12 @@ export default function App() {
       }
 
       if (!latestMenu.is_available || latestMenu.stock < cartItem.quantity) {
-        alert(`Mohon maaf, stok untuk menu "${latestMenu.name}" baru saja habis atau tidak mencukupi (sisa stok: ${latestMenu.stock}). Keranjang akan disesuaikan.`);
-        // Refresh menu agar sesuai dengan database
+        alert(`Mohon maaf, stok untuk menu "${latestMenu.name}" baru saja habis atau tidak mencukupi (sisa stok: ${latestMenu.stock}).`);
         const { data: refreshedMenus } = await supabase.from('menus').select('*').order('name');
         if (refreshedMenus) setMenuItems(refreshedMenus);
-        return; // Batalkan proses checkout
+        return;
       }
     }
-    // ----------------------------------------------------
 
     const generatedOrderId = `MK-${Math.floor(10000 + Math.random() * 90000)}`;
 
@@ -545,7 +543,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950 overflow-x-hidden">
-      {/* Top Application Bar - Desain Elegan Mewah & Responsif */}
       <header className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-lg">
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-18 gap-2 py-2">
@@ -635,7 +632,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Staff Sub-Navigation Bar - Fully Scrollable di HP */}
         {currentRole === 'staff' && (
           <div className="bg-slate-950 border-t border-slate-800/80 px-3 sm:px-6 lg:px-8">
             <div className="max-w-7xl mx-auto flex items-center justify-between overflow-x-auto scrollbar-none py-2 gap-2">
@@ -706,7 +702,6 @@ export default function App() {
         )}
       </header>
 
-      {/* Main Layout */}
       <main className="max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 flex-1 flex flex-col">
         {isLoading ? (
           <div className="flex-1 flex flex-col items-center justify-center py-24 text-slate-500">
@@ -715,10 +710,8 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* VIEW 1: CUSTOMER VIEW OR STAFF POS WORKSTATION */}
             {(currentRole === 'customer' || (currentRole === 'staff' && staffTab === 'pos')) && (
               <div className="flex-1 flex flex-col lg:flex-row gap-6">
-                {/* Catalog Panel */}
                 <div className="flex-1 flex flex-col min-w-0">
                   {currentRole === 'customer' && (
                     <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-slate-900 rounded-2xl p-4 sm:p-6 text-white shadow-xl mb-4 sm:mb-6 flex items-center justify-between border border-amber-500/25">
@@ -735,7 +728,6 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* Filter & Search Controls */}
                   <div className="bg-slate-950 p-3 sm:p-4 rounded-2xl border border-slate-800 shadow-sm mb-4 space-y-3">
                     <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
                       <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
@@ -787,7 +779,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Products Grid - Optimized grid-cols-2 untuk mobile, 3 untuk tablet/desktop */}
                   {filteredProducts.length === 0 ? (
                     <div className="bg-slate-950 rounded-2xl border border-slate-800 p-12 text-center flex flex-col items-center justify-center flex-1">
                       <div className="w-14 h-14 rounded-2xl bg-slate-900 text-slate-500 flex items-center justify-center mb-3 border border-slate-800">
@@ -900,7 +891,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Right Panel Workstation (Desktop Sidebar) */}
                 <aside className="hidden lg:flex flex-col w-96 shrink-0">
                   <div className="sticky top-24 bg-slate-950 rounded-2xl border border-slate-800 shadow-xl flex flex-col h-[calc(100vh-8rem)]">
                     <div className="p-4 border-b border-slate-800 flex items-center justify-between">
@@ -1043,7 +1033,7 @@ export default function App() {
                               className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20 transition"
                             >
                               <QrCode className="w-3.5 h-3.5" />
-                              <span>Bayar via QRIS Digital</span>
+                              <span>Bayar via Pembayaran Digital</span>
                             </button>
                           </div>
                         )}
@@ -1054,12 +1044,12 @@ export default function App() {
               </div>
             )}
 
-            {/* VIEW: ANTREAN PESANAN MASUK REALTIME */}
+            {/* VIEW: ANTREAN PESANAN MASUK (4 TAHAPAN STATUS) */}
             {currentRole === 'staff' && staffTab === 'incoming' && (
               <div className="space-y-4">
                 <div className="bg-slate-950 p-4 sm:p-5 rounded-2xl border border-slate-800 flex justify-between items-center shadow-sm">
                   <div>
-                    <h2 className="text-sm sm:text-base font-bold text-slate-100">Antrean Pesanan Masuk</h2>
+                    <h2 className="text-sm sm:text-base font-bold text-slate-100">Antrean Pesanan Masuk (4 Tahapan)</h2>
                     <p className="text-xs text-slate-400 mt-0.5">
                       Kasir Aktif: <strong className="text-amber-400">{activeCashier.name}</strong>
                     </p>
@@ -1086,6 +1076,8 @@ export default function App() {
                         className={`bg-slate-950 rounded-2xl border p-4 sm:p-4.5 shadow-sm flex flex-col justify-between ${
                           ord.status === 'Selesai'
                             ? 'border-slate-800 opacity-60'
+                            : ord.status === 'Siap Diantar'
+                            ? 'border-emerald-500/40 bg-emerald-950/10'
                             : ord.status === 'Sedang Disiapkan'
                             ? 'border-blue-500/40 bg-blue-950/10'
                             : 'border-amber-500/40 bg-amber-950/10'
@@ -1101,6 +1093,8 @@ export default function App() {
                               className={`text-[10px] font-bold px-2.5 py-1 rounded-md border ${
                                 ord.status === 'Selesai'
                                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                                  : ord.status === 'Siap Diantar'
+                                  ? 'bg-teal-500/10 text-teal-400 border-teal-500/20'
                                   : ord.status === 'Sedang Disiapkan'
                                   ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
                                   : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
@@ -1129,6 +1123,7 @@ export default function App() {
                             <span className="text-amber-400 text-sm">{formatRupiah(ord.grand_total)}</span>
                           </div>
 
+                          {/* 4 Tahapan Status Button Trigger */}
                           {ord.status === 'Menunggu Konfirmasi' && (
                             <button
                               onClick={() => handleUpdateOrderStatus(ord, 'Sedang Disiapkan')}
@@ -1140,10 +1135,21 @@ export default function App() {
 
                           {ord.status === 'Sedang Disiapkan' && (
                             <button
-                              onClick={() => handleUpdateOrderStatus(ord, 'Selesai')}
-                              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-emerald-600/20"
+                              onClick={() => handleUpdateOrderStatus(ord, 'Siap Diantar')}
+                              className="w-full py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-teal-600/20 flex items-center justify-center gap-1.5"
                             >
-                              Tandai Selesai ({activeCashier.name.split(' ')[0]})
+                              <Truck className="w-4 h-4" />
+                              <span>Tandai Siap Diantar / Disajikan</span>
+                            </button>
+                          )}
+
+                          {ord.status === 'Siap Diantar' && (
+                            <button
+                              onClick={() => handleUpdateOrderStatus(ord, 'Selesai')}
+                              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1.5"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Selesaikan Pesanan & Lunas</span>
                             </button>
                           )}
 
@@ -1160,7 +1166,6 @@ export default function App() {
               </div>
             )}
 
-            {/* VIEW 2: STAFF INVENTORY & MENU MANAGEMENT */}
             {currentRole === 'staff' && staffTab === 'inventory' && (
               <div className="space-y-5">
                 <div className="bg-slate-950 p-4 sm:p-5 rounded-2xl border border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1262,7 +1267,6 @@ export default function App() {
               </div>
             )}
 
-            {/* VIEW 3: SHIFT MANAGEMENT */}
             {currentRole === 'staff' && staffTab === 'shift' && (
               <div className="max-w-2xl mx-auto w-full space-y-5">
                 <div className="bg-slate-950 p-4 sm:p-6 rounded-2xl border border-slate-800 shadow-sm space-y-5">
@@ -1374,7 +1378,6 @@ export default function App() {
               </div>
             )}
 
-            {/* VIEW 4: REAL-TIME REVENUE & SALES REPORTS */}
             {currentRole === 'staff' && staffTab === 'reports' && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1474,7 +1477,6 @@ export default function App() {
         )}
       </main>
 
-      {/* MOBILE FLOATING CART BAR */}
       {cart.length > 0 && (
         <div className="lg:hidden fixed bottom-0 inset-x-0 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 p-3 px-4 z-40 shadow-2xl">
           <div className="flex items-center justify-between gap-3 max-w-md mx-auto">
@@ -1510,7 +1512,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MOBILE CART SHEET MODAL */}
       {isMobileCartOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/80 backdrop-blur-sm lg:hidden p-0">
           <div className="bg-slate-950 border-t border-slate-800 w-full max-h-[85vh] rounded-t-3xl p-4 sm:p-5 flex flex-col shadow-2xl animate-in slide-in-from-bottom">
@@ -1634,7 +1635,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MULTI-KASIR PIN LOGIN MODAL */}
       {isLoginModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-slate-950 border border-slate-800 w-full max-w-sm rounded-3xl p-5 sm:p-6 shadow-2xl my-auto">
@@ -1739,7 +1739,6 @@ export default function App() {
         </div>
       )}  
 
-      {/* MODAL PENGATURAN SHIFT */}
       {isEditShiftModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-5 sm:p-6 shadow-2xl my-auto">
@@ -1835,7 +1834,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MERGE TABLE MODAL */}
       {isMergeTableModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
           <div className="bg-slate-950 border border-slate-800 w-full max-w-sm rounded-3xl p-5 sm:p-6 shadow-2xl">
@@ -1867,7 +1865,6 @@ export default function App() {
         </div>
       )}
 
-      {/* PAYMENT MODAL */}
       {isPaymentModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-slate-950 border border-slate-800 w-full max-w-lg rounded-3xl p-5 sm:p-6 shadow-2xl my-auto max-h-[92vh] flex flex-col">
@@ -2045,7 +2042,6 @@ export default function App() {
         </div>
       )}
 
-      {/* SPLIT BILL MODAL */}
       {isSplitBillModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
           <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-5 sm:p-6 shadow-2xl">
@@ -2130,7 +2126,6 @@ export default function App() {
         </div>
       )}
 
-      {/* RECEIPT MODAL */}
       {isReceiptModalOpen && lastProcessedOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-5 sm:p-6 shadow-2xl my-auto max-h-[92vh] flex flex-col">
@@ -2233,7 +2228,6 @@ export default function App() {
         </div>
       )}
 
-      {/* CUSTOMER CONFIRMATION MODAL */}
       {isCustomerOrderDoneModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
           <div className="bg-slate-950 border border-slate-800 w-full max-w-sm rounded-3xl p-6 text-center space-y-4 shadow-2xl">
@@ -2256,7 +2250,6 @@ export default function App() {
         </div>
       )}
 
-      {/* MENU FORM MODAL (CRUD SUPABASE) */}
       {isMenuFormModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-slate-950 border border-slate-800 w-full max-w-md rounded-3xl p-5 sm:p-6 shadow-2xl my-auto">
