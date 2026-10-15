@@ -38,11 +38,11 @@ import {
 } from 'lucide-react';
 
 const CASHIERS_LIST = [
-  { id: 'c-1', name: 'Archibald Ciba Arrasyid', pin: '1111', role: 'Staff' },
-  { id: 'c-2', name: 'Shabha Khalisha Angky', pin: '2222', role: 'Staff' },
-  { id: 'c-3', name: 'Chiko Agansyah', pin: '3333', role: 'Staff' },
-  { id: 'c-4', name: 'Rasyid Ihtizzamul Hidayat', pin: '4444', role: 'Staff' },
-  { id: 'c-5', name: 'Afshika Hunain Arbinta', pin: '5555', role: 'Staff' },
+  { id: 'c-1', name: 'Archibald Ciba Arrasyid', role: 'Staff' },
+  { id: 'c-2', name: 'Shabha Khalisha Angky', role: 'Staff' },
+  { id: 'c-3', name: 'Chiko Agansyah', role: 'Staff' },
+  { id: 'c-4', name: 'Rasyid Ihtizzamul Hidayat', role: 'Staff' },
+  { id: 'c-5', name: 'Afshika Hunain Arbinta', role: 'Staff' },
 ];
 
 export default function App() {
@@ -429,19 +429,40 @@ export default function App() {
     setIsReceiptModalOpen(true);
   };
 
-  const handleStrictLogin = (e) => {
+  const handleStrictLogin = async (e) => {
     if (e) e.preventDefault();
-    if (pinInput.trim() === selectedCashierLogin.pin) {
-      setActiveCashier(selectedCashierLogin);
+
+    // 1. Cek jika PIN kosong
+    if (!pinInput.trim()) {
+      setPinError('PIN tidak boleh kosong!');
+      return;
+    }
+
+    // 2. Minta Supabase mencari kasir dengan ID dan PIN yang cocok
+    // Kita hanya meminta 'id, name, role'. PIN tidak akan ditarik ke frontend.
+    const { data, error } = await supabase
+      .from('cashiers')
+      .select('id, name, role')
+      .eq('id', selectedCashierLogin.id)
+      .eq('pin', pinInput.trim())
+      .single();
+
+    // 3. Evaluasi hasil dari Supabase
+    if (data && !error) {
+      // Login Sukses
+      setActiveCashier(data);
       setCurrentRole('staff');
       setIsLoginModalOpen(false);
       setPinInput('');
       setPinError('');
+      
+      // Simpan sesi login
       localStorage.setItem('menuku_staff_session', JSON.stringify({ 
-        cashier: selectedCashierLogin, 
+        cashier: data, 
         loginTime: new Date().getTime() 
       }));
     } else {
+      // Login Gagal (PIN Salah atau Error Jaringan)
       setPinError(`Otorisasi Gagal: PIN untuk ${selectedCashierLogin.name.split(' ')[0]} tidak valid!`);
       setPinInput(''); 
     }
@@ -2195,8 +2216,8 @@ export default function App() {
                   <div className="text-center border-b border-dashed border-slate-300 pb-3">
                     <h4 className="font-black text-sm tracking-widest text-slate-900">
                       {lastProcessedOrder.table.toLowerCase().includes('take away') || lastProcessedOrder.table.toLowerCase().includes('bawa') 
-                        ? 'MENU KU - TAKE AWAY STICKER' 
-                        : 'MENU KU - DINE IN STICKER'}
+                        ? 'RESTORAN NUSANTARA KELOMPOK C' 
+                        : 'RESTORAN NUSANTARA KELOMPOK C'}
                     </h4>
                     <p className="text-[10px] text-slate-600">Executive Dining Experience</p>
                     <p className="text-[9px] text-slate-500 mt-0.5">Kawasan Industri Cikarang, Bekasi</p>
@@ -2206,11 +2227,11 @@ export default function App() {
                   </div>
 
                   <div className="flex justify-between text-[10px] text-slate-600 border-b border-dashed border-slate-200 pb-2">
-                    <span>Nota: <strong className="text-slate-900">{lastProcessedOrder.orderId}</strong></span>
+                    <span>ID Pesanan: <strong className="text-slate-900">{lastProcessedOrder.orderId}</strong></span>
                     <span>{lastProcessedOrder.date} {lastProcessedOrder.time}</span>
                   </div>
                   <div className="flex justify-between text-[10px] text-slate-600 pb-1">
-                    <span>Meja: <strong className="text-slate-900">{lastProcessedOrder.table}</strong></span>
+                    <span><strong className="text-slate-900">{lastProcessedOrder.table}</strong></span>
                     <span>Customer: <strong className="text-slate-900">{lastProcessedOrder.customerName}</strong></span>
                   </div>
                   <div className="flex justify-between text-[10px] text-slate-600 pb-2 border-b border-dashed border-slate-200">
