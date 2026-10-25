@@ -1,6 +1,0 @@
-[build.environment]
-<<<<<<< HEAD
-  NETLIFY_DRAWER = "false"
-=======
-  NETLIFY_DRAWER = "false"
->>>>>>> e5b13cade032e9cf2b0fd39eafd0322b495f8b48
