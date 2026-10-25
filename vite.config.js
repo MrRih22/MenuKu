@@ -7,18 +7,18 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'], // Disesuaikan dengan ekstensi ikon Anda
+      includeAssets: ['favicon.svg'],
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        globStrict: false, // Mematikan strict mode agar build tidak gagal jika file wasm/dll tidak ditemukan
+        // Cukup definisikan pola ekstensi ini, hilangkan globStrict
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
       },
       manifest: {
         name: 'MenuKu',
         short_name: 'MenuKu',
         description: 'Sistem Kasir POS dan Self-Order Digital',
-        theme_color: '#0f172a', // Warna slate-900 (sesuai tema UI)
+        theme_color: '#0f172a',
         background_color: '#0f172a',
-        display: 'standalone', // Membuang UI browser agar tampil full-screen
+        display: 'standalone',
         icons: [
           {
             src: '/favicon.svg',
