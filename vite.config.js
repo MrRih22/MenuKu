@@ -7,7 +7,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
+      includeAssets: ['favicon.svg'], // Disesuaikan dengan ekstensi ikon Anda
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globStrict: false, // Mematikan strict mode agar build tidak gagal jika file wasm/dll tidak ditemukan
+      },
       manifest: {
         name: 'MenuKu',
         short_name: 'MenuKu',
