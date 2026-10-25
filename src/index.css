@@ -1,4 +1,5 @@
 @import "tailwindcss";
+
 @media print {
   body * {
     visibility: hidden;
@@ -21,8 +22,4 @@
   .no-print {
     display: none !important;
   }
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> e5b13cade032e9cf2b0fd39eafd0322b495f8b48
