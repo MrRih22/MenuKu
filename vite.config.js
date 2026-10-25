@@ -9,7 +9,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
-        name: 'MenuKu Kelompok C',
+        name: 'MenuKu',
         short_name: 'MenuKu',
         description: 'Sistem Kasir POS dan Self-Order Digital',
         theme_color: '#0f172a', // Warna slate-900 (sesuai tema UI)
