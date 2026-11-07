@@ -12,7 +12,6 @@ import {
   CreditCard, 
   QrCode, 
   Banknote, 
-  Receipt, 
   ChefHat, 
   Clock, 
   TrendingUp, 
@@ -276,6 +275,15 @@ export default function App() {
   const handleCheckoutSuccess = async (isCustomerOrder = false) => {
     if (cart.length === 0) return;
 
+    // Validasi khusus kasir: jika pembayaran tunai, pastikan uang yang dibayar tidak kurang dari grandTotal
+    if (!isCustomerOrder && paymentType === 'cash') {
+      const given = Number(cashTendered) || 0;
+      if (given < grandTotal) {
+        alert(`Uang tunai kurang! Tagihan sebesar ${formatRupiah(grandTotal)}, tetapi uang yang dimasukkan baru ${formatRupiah(given)}.`);
+        return;
+      }
+    }
+
     for (const cartItem of cart) {
       const { data: latestMenu, error: fetchError } = await supabase
         .from('menus')
@@ -289,7 +297,6 @@ export default function App() {
       }
 
       if (!latestMenu.is_available || latestMenu.stock < cartItem.quantity) {
-        // PERUBAHAN: Pesan notifikasi sesuai permintaan
         alert("Mohon Maaf Stok Habis, Silahkan Refresh Kembali Halaman :)");
         const { data: refreshedMenus } = await supabase.from('menus').select('*').order('name');
         if (refreshedMenus) setMenuItems(refreshedMenus);
@@ -337,8 +344,6 @@ export default function App() {
       return;
     }
 
-    // PERUBAHAN KUNCI: Potong stok langsung dilakukan di sini untuk SEMUA jenis pesanan
-    // Baik mode Kasir maupun mode Self-Order (saat berstatus Menunggu Konfirmasi)
     for (const cartItem of cart) {
       const prod = menuItems.find((p) => p.id === cartItem.id);
       if (prod) {
@@ -403,9 +408,6 @@ export default function App() {
       alert('Gagal update status: ' + error.message);
       return;
     }
-
-    // PERUBAHAN: Pengurangan stok DIHAPUS dari sini karena stok sudah dipotong 
-    // sejak awal pesanan dibuat pada fungsi handleCheckoutSuccess
   };
 
   const handlePrintOrderReceipt = (order) => {
@@ -432,14 +434,11 @@ export default function App() {
   const handleStrictLogin = async (e) => {
     if (e) e.preventDefault();
 
-    // 1. Cek jika PIN kosong
     if (!pinInput.trim()) {
       setPinError('PIN tidak boleh kosong!');
       return;
     }
 
-    // 2. Minta Supabase mencari kasir dengan ID dan PIN yang cocok
-    // Kita hanya meminta 'id, name, role'. PIN tidak akan ditarik ke frontend.
     const { data, error } = await supabase
       .from('cashiers')
       .select('id, name, role')
@@ -447,22 +446,18 @@ export default function App() {
       .eq('pin', pinInput.trim())
       .single();
 
-    // 3. Evaluasi hasil dari Supabase
     if (data && !error) {
-      // Login Sukses
       setActiveCashier(data);
       setCurrentRole('staff');
       setIsLoginModalOpen(false);
       setPinInput('');
       setPinError('');
       
-      // Simpan sesi login
       localStorage.setItem('menuku_staff_session', JSON.stringify({ 
         cashier: data, 
         loginTime: new Date().getTime() 
       }));
     } else {
-      // Login Gagal (PIN Salah atau Error Jaringan)
       setPinError(`Otorisasi Gagal: PIN untuk ${selectedCashierLogin.name.split(' ')[0]} tidak valid!`);
       setPinInput(''); 
     }
@@ -2199,7 +2194,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* WRAPPER BARU: Melakukan perulangan (loop) 3 kali untuk 3 lembar struk cetak */}
             <div className="my-4 overflow-y-auto flex-1 shadow-sm">
               {[1, 2, 3].map((copyNum) => (
                 <div 
@@ -2215,9 +2209,7 @@ export default function App() {
                 >
                   <div className="text-center border-b border-dashed border-slate-300 pb-3">
                     <h4 className="font-black text-sm tracking-widest text-slate-900">
-                      {lastProcessedOrder.table.toLowerCase().includes('take away') || lastProcessedOrder.table.toLowerCase().includes('bawa') 
-                        ? 'RESTORAN NUSANTARA KELOMPOK C' 
-                        : 'RESTORAN NUSANTARA KELOMPOK C'}
+                      RESTORAN NUSANTARA KELOMPOK C
                     </h4>
                     <p className="text-[10px] text-slate-600">Executive Dining Experience</p>
                     <p className="text-[9px] text-slate-500 mt-0.5">Kawasan Industri Cikarang, Bekasi</p>
@@ -2275,6 +2267,19 @@ export default function App() {
                       <span>{lastProcessedOrder.paymentMethod}</span>
                     </div>
                   </div>
+
+                  {lastProcessedOrder.paymentMethod.includes('Tunai') && (
+  <div className="border-t border-dashed border-slate-300 pt-2 space-y-1 text-[11px]">
+    <div className="flex justify-between text-slate-600">
+      <span>Tunai Diterima:</span>
+      <span>{formatRupiah(lastProcessedOrder.cashGiven)}</span>
+    </div>
+    <div className="flex justify-between text-slate-900 font-bold">
+      <span>Uang Kembalian:</span>
+      <span>{formatRupiah(lastProcessedOrder.cashChange)}</span>
+    </div>
+  </div>
+)}
 
                   <div className="text-center pt-3 border-t border-dashed border-slate-300 text-[10px] text-slate-500">
                     <p>Harap bawa stiker ini bersama pesanan ke {lastProcessedOrder.table}!</p>
