@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import {
   UtensilsCrossed,
@@ -33,7 +33,10 @@ import {
   Check,
   UserCheck,
   Download,
-  Truck
+  Truck,
+  Volume2,
+  VolumeX,
+  ChevronDown
 } from 'lucide-react';
 
 const CASHIERS_LIST = [
@@ -43,6 +46,77 @@ const CASHIERS_LIST = [
   { id: 'c-4', name: 'Rasyid Ihtizzamul Hidayat', role: 'Staff' },
   { id: 'c-5', name: 'Afshika Hunain Arbinta', role: 'Staff' },
 ];
+
+const getInitials = (name = '') =>
+  name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+
+let mkAudioCtx = null;
+const getAudioCtx = () => {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return null;
+    if (!mkAudioCtx) mkAudioCtx = new AC();
+    if (mkAudioCtx.state === 'suspended') mkAudioCtx.resume();
+    return mkAudioCtx;
+  } catch (e) {
+    return null;
+  }
+};
+
+const playOrderChime = () => {
+  try {
+    const ctx = getAudioCtx();
+    if (ctx) {
+      [880, 1318.5].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const t0 = ctx.currentTime + i * 0.2;
+        osc.type = 'sine';
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.4);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.45);
+      });
+    }
+  } catch (e) { /* abaikan */ }
+  try {
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+  } catch (e) { /* abaikan */ }
+};
+
+const getWaitInfo = (createdAt, now) => {
+  const ts = new Date(createdAt).getTime();
+  if (Number.isNaN(ts)) return null;
+  const minutes = Math.max(0, Math.floor((now - ts) / 60000));
+  let label;
+  if (minutes < 1) label = 'Baru saja';
+  else if (minutes < 60) label = `${minutes} mnt lalu`;
+  else label = `${Math.floor(minutes / 60)} j ${minutes % 60} mnt lalu`;
+  const tone = minutes >= 20 ? 'late' : minutes >= 10 ? 'warn' : 'ok';
+  return { label, tone, minutes };
+};
+
+const waitTone = {
+  ok: 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/25',
+  warn: 'bg-amber-500/10 text-amber-400 ring-amber-500/25',
+  late: 'bg-rose-500/10 text-rose-400 ring-rose-500/30 animate-pulse',
+};
+
+const REPORT_RANGES = [
+  { k: 'today', l: 'Hari Ini', chart: 'Omzet per jam hari ini', short: 'Hari ini' },
+  { k: 'week', l: '7 Hari', chart: 'Omzet per hari, 7 hari terakhir', short: '7 hari terakhir' },
+  { k: 'month', l: '30 Hari', chart: 'Omzet per hari, 30 hari terakhir', short: '30 hari terakhir' },
+  { k: 'year', l: '1 Tahun', chart: 'Omzet per bulan, 12 bulan terakhir', short: '12 bulan terakhir' },
+];
+
+const QUICK_NOTES = {
+  Makanan: ['Pedas', 'Tidak pedas', 'Tanpa bawang', 'Dibungkus'],
+  Minuman: ['Tanpa es', 'Less ice', 'Less sugar', 'Tanpa gula'],
+};
 
 /* ------------------------------------------------------------------ */
 /*  DESIGN SYSTEM                                                      */
@@ -108,6 +182,76 @@ export default function App() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
+  const [loginStep, setLoginStep] = useState('pick');
+  const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), toast.duration || 3200);
+    return () => clearTimeout(t);
+  }, [toast]);
+
+  const [soundOn, setSoundOn] = useState(() => {
+    try { return localStorage.getItem('menuku_sound') !== 'off'; } catch (e) { return true; }
+  });
+  const soundOnRef = useRef(soundOn);
+  const currentRoleRef = useRef(currentRole);
+  const [isTableModalOpen, setIsTableModalOpen] = useState(false);
+  const [reportRange, setReportRange] = useState('today');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [shiftHistory, setShiftHistory] = useState([]);
+  const [shiftHistoryError, setShiftHistoryError] = useState('');
+  const [shiftReport, setShiftReport] = useState(null);
+  const [isSavingShift, setIsSavingShift] = useState(false);
+
+  const fetchShiftHistory = async () => {
+    const { data, error } = await supabase
+      .from('shift_reports')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (error) {
+      setShiftHistoryError(error.message);
+      return;
+    }
+    setShiftHistoryError('');
+    setShiftHistory(data || []);
+  };
+
+  useEffect(() => {
+    fetchShiftHistory();
+  }, []);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+
+  useEffect(() => {
+    soundOnRef.current = soundOn;
+    try { localStorage.setItem('menuku_sound', soundOn ? 'on' : 'off'); } catch (e) { /* abaikan */ }
+  }, [soundOn]);
+
+  useEffect(() => {
+    currentRoleRef.current = currentRole;
+  }, [currentRole]);
+
+  // Browser mewajibkan interaksi pengguna sebelum suara boleh diputar.
+  useEffect(() => {
+    const unlock = () => {
+      getAudioCtx();
+      window.removeEventListener('pointerdown', unlock);
+    };
+    window.addEventListener('pointerdown', unlock);
+    return () => window.removeEventListener('pointerdown', unlock);
+  }, []);
+
+  useEffect(() => {
+    if (currentRole !== 'staff' || staffTab !== 'incoming') return;
+    setNowTick(Date.now());
+    const t = setInterval(() => setNowTick(Date.now()), 15000);
+    return () => clearInterval(t);
+  }, [currentRole, staffTab]);
+
+  useEffect(() => {
+    if (isLoginModalOpen) setLoginStep('pick');
+  }, [isLoginModalOpen]);
 
   const [customerName, setCustomerName] = useState('');
   const [selectedTable, setSelectedTable] = useState('Meja 04');
@@ -234,6 +378,10 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           setLiveOrders((prev) => [payload.new, ...prev]);
+          if (currentRoleRef.current === 'staff' && payload.new && payload.new.status === 'Menunggu Konfirmasi') {
+            if (soundOnRef.current) playOrderChime();
+            setToast({ type: 'info', title: 'Pesanan baru masuk', message: `${payload.new.order_code} • ${payload.new.table_no}` });
+          }
         } else if (payload.eventType === 'UPDATE') {
           setLiveOrders((prev) =>
             prev.map((ord) => (ord.id === payload.new.id ? payload.new : ord))
@@ -321,6 +469,14 @@ export default function App() {
     });
   };
 
+  const toggleNoteChip = (id, current, chip) => {
+    const parts = (current || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const idx = parts.findIndex((x) => x.toLowerCase() === chip.toLowerCase());
+    if (idx >= 0) parts.splice(idx, 1);
+    else parts.push(chip);
+    handleUpdateCartNote(id, parts.join(', '));
+  };
+
   const handleUpdateCartNote = (id, noteText) => {
     setCart((prevCart) =>
       prevCart.map((c) => (c.id === id ? { ...c, note: noteText } : c))
@@ -334,7 +490,7 @@ export default function App() {
     if (!isCustomerOrder && paymentType === 'cash') {
       const given = Number(cashTendered) || 0;
       if (given < grandTotal) {
-        alert(`Uang tunai kurang! Tagihan sebesar ${formatRupiah(grandTotal)}, tetapi uang yang dimasukkan baru ${formatRupiah(given)}.`);
+        setToast({ type: 'error', title: 'Uang tunai kurang', message: `Tagihan ${formatRupiah(grandTotal)}, uang diterima baru ${formatRupiah(given)}.` });
         return;
       }
     }
@@ -347,12 +503,12 @@ export default function App() {
         .single();
 
       if (fetchError || !latestMenu) {
-        alert(`Gagal memeriksa ketersediaan menu ${cartItem.name}. Silakan coba lagi.`);
+        setToast({ type: 'error', title: 'Gagal memeriksa stok', message: `Ketersediaan ${cartItem.name} tidak dapat diperiksa. Silakan coba lagi.` });
         return;
       }
 
       if (!latestMenu.is_available || latestMenu.stock < cartItem.quantity) {
-        alert("Mohon Maaf Stok Habis, Silahkan Refresh Kembali Halaman :)");
+        setToast({ type: 'error', title: 'Stok tidak mencukupi', message: 'Ada menu yang stoknya habis. Daftar menu sudah diperbarui, silakan periksa keranjang.', duration: 5000 });
         const { data: refreshedMenus } = await supabase.from('menus').select('*').order('name');
         if (refreshedMenus) setMenuItems(refreshedMenus);
         return;
@@ -395,7 +551,7 @@ export default function App() {
     const { error } = await supabase.from('orders').insert([orderPayload]);
 
     if (error) {
-      alert('Gagal memproses pesanan ke Supabase: ' + error.message);
+      setToast({ type: 'error', title: 'Gagal memproses pesanan', message: error.message, duration: 5000 });
       return;
     }
 
@@ -411,19 +567,6 @@ export default function App() {
     }
 
     if (!isCustomerOrder) {
-      if (paymentType === 'cash') {
-        setShiftData((s) => ({
-          ...s,
-          cashSales: s.cashSales + grandTotal,
-          expectedCash: s.expectedCash + grandTotal
-        }));
-      } else {
-        setShiftData((s) => ({
-          ...s,
-          nonCashSales: s.nonCashSales + grandTotal
-        }));
-      }
-
       const receiptData = {
         orderId: generatedOrderId,
         time: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB',
@@ -460,7 +603,7 @@ export default function App() {
       .eq('id', order.id);
 
     if (error) {
-      alert('Gagal update status: ' + error.message);
+      setToast({ type: 'error', title: 'Gagal memperbarui status', message: error.message, duration: 5000 });
       return;
     }
   };
@@ -491,6 +634,7 @@ export default function App() {
 
     if (!pinInput.trim()) {
       setPinError('PIN tidak boleh kosong!');
+      setToast({ type: 'error', title: 'PIN kosong', message: 'Masukkan 4 digit PIN terlebih dahulu.' });
       return;
     }
 
@@ -507,6 +651,7 @@ export default function App() {
       setIsLoginModalOpen(false);
       setPinInput('');
       setPinError('');
+      setToast({ type: 'success', title: 'Berhasil masuk', message: `Selamat bertugas, ${data.name.split(' ')[0]}!` });
 
       localStorage.setItem('menuku_staff_session', JSON.stringify({
         cashier: data,
@@ -515,6 +660,7 @@ export default function App() {
     } else {
       setPinError(`Otorisasi Gagal: PIN untuk ${selectedCashierLogin.name.split(' ')[0]} tidak valid!`);
       setPinInput('');
+      setToast({ type: 'error', title: 'PIN salah', message: `PIN untuk ${selectedCashierLogin.name.split(' ')[0]} tidak sesuai. Coba lagi.` });
     }
   };
 
@@ -575,10 +721,42 @@ export default function App() {
   };
 
   const handleDeleteProduct = async (id) => {
-    if (confirm('Hapus menu ini dari katalog?')) {
-      await supabase.from('menus').delete().eq('id', id);
-      setCart((prev) => prev.filter((c) => c.id !== id));
+    await supabase.from('menus').delete().eq('id', id);
+    setCart((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  const handleCloseShift = async () => {
+    if (isSavingShift) return;
+    if (!shiftData.countedCash) {
+      setToast({ type: 'error', title: 'Hitung uang laci dulu', message: 'Isi jumlah uang fisik di laci sebelum menutup shift.' });
+      return;
     }
+    setIsSavingShift(true);
+    const payload = {
+      cashier_id: activeCashier.id,
+      cashier_name: activeCashier.name,
+      shift_name: shiftData.shiftName,
+      start_time: shiftData.startTime,
+      end_time: shiftData.endTime,
+      initial_float: Number(shiftData.initialFloat) || 0,
+      cash_sales: shiftSummary.cashSales,
+      non_cash_sales: shiftSummary.nonCashSales,
+      cash_count: shiftSummary.cashCount,
+      non_cash_count: shiftSummary.nonCashCount,
+      expected_cash: shiftSummary.expectedCash,
+      counted_cash: Number(shiftData.countedCash),
+      discrepancy: shiftSummary.discrepancy
+    };
+    const { data, error } = await supabase.from('shift_reports').insert([payload]).select().single();
+    setIsSavingShift(false);
+    if (error) {
+      setToast({ type: 'error', title: 'Gagal menyimpan laporan shift', message: error.message, duration: 6000 });
+      return;
+    }
+    setShiftHistory((prev) => [data, ...prev]);
+    setShiftReport({ ...data, saved: true });
+    setShiftData((sd) => ({ ...sd, countedCash: '', shiftDiscrepancy: null }));
+    setToast({ type: 'success', title: 'Shift ditutup', message: `Laporan shift ${activeCashier.name} tersimpan.` });
   };
 
   const handleToggleProductAvailability = async (prod) => {
@@ -590,7 +768,7 @@ export default function App() {
 
   const handleExportCSV = () => {
     if (liveOrders.length === 0) {
-      alert('Belum ada data laporan omzet yang bisa di-ekspor.');
+      setToast({ type: 'info', title: 'Belum ada data', message: 'Belum ada laporan omzet yang bisa diekspor.' });
       return;
     }
 
@@ -648,6 +826,131 @@ export default function App() {
   /* ---------------------------------------------------------------- */
   const pendingCount = liveOrders.filter((o) => o.status !== 'Selesai').length;
 
+  const tableStatusMap = useMemo(() => {
+    const map = {};
+    liveOrders.forEach((o) => {
+      if (o.status === 'Selesai' || !o.table_no) return;
+      String(o.table_no).split(' + ').forEach((t) => {
+        const name = t.trim();
+        if (!map[name]) map[name] = { count: 0, ready: false };
+        map[name].count += 1;
+        if (o.status === 'Siap Diantar') map[name].ready = true;
+      });
+    });
+    return map;
+  }, [liveOrders]);
+
+  const reportData = useMemo(() => {
+    const now = new Date();
+    const done = liveOrders.filter((o) => o.status === 'Selesai' && o.created_at);
+    const sameDay = (a, b) =>
+      a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    let buckets = [];
+    let inRange = [];
+
+    if (reportRange === 'today') {
+      inRange = done.filter((o) => sameDay(new Date(o.created_at), now));
+      const hours = Array.from({ length: 24 }, (_, h) => ({ label: String(h).padStart(2, '0'), total: 0, count: 0 }));
+      inRange.forEach((o) => {
+        const h = new Date(o.created_at).getHours();
+        hours[h].total += Number(o.grand_total) || 0;
+        hours[h].count += 1;
+      });
+      const active = hours.map((b, i) => (b.count > 0 ? i : -1)).filter((i) => i >= 0);
+      const start = Math.min(8, active.length ? active[0] : 8);
+      const end = Math.max(21, active.length ? active[active.length - 1] : 21);
+      buckets = hours.slice(start, end + 1);
+    } else {
+      let defs;
+      if (reportRange === 'year') {
+        defs = Array.from({ length: 12 }, (_, i) => {
+          const d = new Date(now.getFullYear(), now.getMonth() - (11 - i), 1);
+          return {
+            label: d.toLocaleDateString('id-ID', { month: 'short' }),
+            full: d.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }),
+            total: 0,
+            count: 0,
+            match: (o) => o.getFullYear() === d.getFullYear() && o.getMonth() === d.getMonth(),
+          };
+        });
+      } else {
+        const n = reportRange === 'month' ? 30 : 7;
+        defs = Array.from({ length: n }, (_, i) => {
+          const d = new Date(now);
+          d.setDate(now.getDate() - (n - 1 - i));
+          return {
+            label: n === 30 ? String(d.getDate()) : d.toLocaleDateString('id-ID', { weekday: 'short' }),
+            full: d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' }),
+            total: 0,
+            count: 0,
+            match: (o) => sameDay(d, o),
+          };
+        });
+      }
+      done.forEach((o) => {
+        const od = new Date(o.created_at);
+        const bucket = defs.find((x) => x.match(od));
+        if (bucket) {
+          bucket.total += Number(o.grand_total) || 0;
+          bucket.count += 1;
+          inRange.push(o);
+        }
+      });
+      buckets = defs;
+    }
+
+    const total = inRange.reduce((sum, o) => sum + (Number(o.grand_total) || 0), 0);
+    const count = inRange.length;
+    const max = buckets.reduce((m, b) => Math.max(m, b.total), 0);
+
+    const menuMap = {};
+    inRange.forEach((o) => {
+      (Array.isArray(o.items) ? o.items : []).forEach((it) => {
+        if (!menuMap[it.name]) menuMap[it.name] = { name: it.name, qty: 0, revenue: 0 };
+        menuMap[it.name].qty += Number(it.quantity) || 0;
+        menuMap[it.name].revenue += (Number(it.price) || 0) * (Number(it.quantity) || 0);
+      });
+    });
+    const top = Object.values(menuMap).sort((a, b) => b.qty - a.qty).slice(0, 5);
+
+    return { buckets, total, count, avg: count ? Math.round(total / count) : 0, max, top };
+  }, [liveOrders, reportRange]);
+
+  const shiftSummary = useMemo(() => {
+    const now = new Date();
+    const m = String(shiftData.startTime || '').match(/(\d{1,2})[:.](\d{2})/);
+    let start = new Date(now);
+    start.setHours(m ? Number(m[1]) : 0, m ? Number(m[2]) : 0, 0, 0);
+    if (start > now) start.setDate(start.getDate() - 1);
+    const lastClose = shiftHistory.find((h) => h.cashier_name === activeCashier.name);
+    if (lastClose && new Date(lastClose.created_at) > start) start = new Date(lastClose.created_at);
+
+    const mine = liveOrders.filter(
+      (o) =>
+        o.cashier_name === activeCashier.name &&
+        o.status !== 'Dibatalkan' &&
+        o.created_at &&
+        new Date(o.created_at) >= start
+    );
+    const cashOrders = mine.filter((o) => String(o.payment_method || '').includes('Tunai'));
+    const nonCashOrders = mine.filter((o) => !String(o.payment_method || '').includes('Tunai'));
+    const sum = (arr) => arr.reduce((t, o) => t + (Number(o.grand_total) || 0), 0);
+
+    const cashSales = sum(cashOrders);
+    const nonCashSales = sum(nonCashOrders);
+    const expectedCash = (Number(shiftData.initialFloat) || 0) + cashSales;
+    const discrepancy = shiftData.countedCash ? Number(shiftData.countedCash) - expectedCash : null;
+
+    return {
+      cashSales,
+      nonCashSales,
+      cashCount: cashOrders.length,
+      nonCashCount: nonCashOrders.length,
+      expectedCash,
+      discrepancy,
+    };
+  }, [liveOrders, activeCashier.name, shiftData.startTime, shiftData.initialFloat, shiftData.countedCash, shiftHistory]);
+
   const staffTabs = [
     { key: 'incoming', label: 'Pesanan Masuk', icon: Bell, badge: pendingCount },
     { key: 'pos', label: 'Kasir POS', icon: UtensilsCrossed },
@@ -674,6 +977,31 @@ export default function App() {
               {formatRupiah(item.price * item.quantity)}
             </span>
           </div>
+
+          {(QUICK_NOTES[item.category] || []).length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_NOTES[item.category].map((chip) => {
+                const active = (item.note || '')
+                  .split(',')
+                  .map((x) => x.trim().toLowerCase())
+                  .includes(chip.toLowerCase());
+                return (
+                  <button
+                    key={chip}
+                    type="button"
+                    onClick={() => toggleNoteChip(item.id, item.note, chip)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition duration-150 active:scale-95 ${
+                      active
+                        ? 'bg-amber-500/15 text-amber-300 border-amber-500/40'
+                        : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:border-zinc-700 hover:text-zinc-200'
+                    }`}
+                  >
+                    {active ? '✓ ' : '+ '}{chip}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <input
@@ -776,12 +1104,14 @@ export default function App() {
         @keyframes mk-pop { from { opacity: 0; transform: translateY(12px) scale(.97) } to { opacity: 1; transform: none } }
         @keyframes mk-sheet { from { transform: translateY(100%) } to { transform: none } }
         @keyframes mk-rise { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+        @keyframes mk-toast { from { opacity: 0; transform: translate(-50%, -16px) scale(.96) } to { opacity: 1; transform: translate(-50%, 0) scale(1) } }
+        .mk-toast { animation: mk-toast .28s cubic-bezier(.16,1,.3,1) both }
         .mk-fade { animation: mk-fade .18s ease-out both }
         .mk-pop { animation: mk-pop .22s cubic-bezier(.16,1,.3,1) both }
         .mk-sheet { animation: mk-sheet .28s cubic-bezier(.16,1,.3,1) both }
         .mk-rise { animation: mk-rise .2s ease-out both }
         @media (prefers-reduced-motion: reduce) {
-          .mk-fade, .mk-pop, .mk-sheet, .mk-rise { animation: none }
+          .mk-fade, .mk-pop, .mk-sheet, .mk-rise, .mk-toast { animation: none }
         }
         @media print {
           body * { visibility: hidden !important; }
@@ -824,18 +1154,15 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-              <div className="flex items-center bg-zinc-800 hover:bg-zinc-700/70 transition rounded-xl pl-2.5 pr-1.5 sm:pl-3 sm:pr-2 py-2 min-w-0 max-w-[118px] sm:max-w-none">
-                <Users className="w-4 h-4 text-amber-400 mr-1.5 sm:mr-2 shrink-0" />
-                <select
-                  value={selectedTable}
-                  onChange={(e) => setSelectedTable(e.target.value)}
-                  className="bg-transparent text-xs font-semibold text-zinc-300 outline-none cursor-pointer truncate min-w-0 w-full"
-                >
-                  {tableList.map((tbl) => (
-                    <option key={tbl} value={tbl}>{tbl}</option>
-                  ))}
-                </select>
-              </div>
+              <button
+                onClick={() => setIsTableModalOpen(true)}
+                className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700/70 border border-zinc-700/50 transition active:scale-95 rounded-xl pl-2.5 pr-2 sm:pl-3 py-2 min-w-0 max-w-[118px] sm:max-w-none"
+                title="Pilih meja"
+              >
+                <Users className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs font-semibold text-zinc-200 truncate">{selectedTable}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+              </button>
 
               {currentRole === 'staff' && staffTab === 'pos' && (
                 <button
@@ -927,9 +1254,30 @@ export default function App() {
       {/* ============================== MAIN ============================= */}
       <main className="max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-6 flex-1 flex flex-col">
         {isLoading ? (
-          <div className="flex-1 flex flex-col items-center justify-center py-24 text-zinc-400">
-            <div className="w-10 h-10 border-[3px] border-amber-600 border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-sm font-medium">Memuat sistem MenuKu…</p>
+          <div className="flex-1 flex flex-col gap-5" aria-busy="true" aria-label="Memuat menu">
+            <div className={`${ui.card} p-3 sm:p-4 flex flex-col sm:flex-row gap-3 sm:items-center justify-between`}>
+              <div className="flex gap-2">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-10 w-24 rounded-xl bg-zinc-800 animate-pulse" />
+                ))}
+              </div>
+              <div className="h-10 w-full sm:w-72 rounded-xl bg-zinc-800 animate-pulse" />
+            </div>
+            <div className="grid grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-5">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className={`${ui.card} overflow-hidden`}>
+                  <div className="aspect-[4/3] bg-zinc-800 animate-pulse" />
+                  <div className="p-3.5 sm:p-4 space-y-3">
+                    <div className="h-4 w-3/4 rounded-md bg-zinc-800 animate-pulse" />
+                    <div className="h-3 w-full rounded-md bg-zinc-800/70 animate-pulse hidden sm:block" />
+                    <div className="flex items-center justify-between pt-1">
+                      <div className="h-5 w-20 rounded-md bg-zinc-800 animate-pulse" />
+                      <div className="h-9 w-20 rounded-xl bg-zinc-800 animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ) : (
           <>
@@ -1201,6 +1549,23 @@ export default function App() {
                       Kasir aktif: <strong className="text-zinc-100">{activeCashier.name}</strong>
                     </p>
                   </div>
+                  <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const next = !soundOn;
+                      setSoundOn(next);
+                      if (next) playOrderChime();
+                    }}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center ring-1 ring-inset transition active:scale-90 ${
+                      soundOn
+                        ? 'bg-amber-500/10 text-amber-400 ring-amber-500/25 hover:bg-amber-500/20'
+                        : 'bg-zinc-800 text-zinc-500 ring-zinc-700 hover:bg-zinc-700'
+                    }`}
+                    title={soundOn ? 'Suara pesanan baru: nyala' : 'Suara pesanan baru: mati'}
+                    aria-label="Atur suara pesanan baru"
+                  >
+                    {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  </button>
                   <span className="bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/25 text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-2">
                     <span className="relative flex w-2 h-2">
                       <span className="absolute inline-flex w-full h-full rounded-full bg-emerald-400 opacity-75 animate-ping" />
@@ -1208,6 +1573,7 @@ export default function App() {
                     </span>
                     Live
                   </span>
+                  </div>
                 </div>
 
                 {liveOrders.length === 0 ? (
@@ -1224,10 +1590,11 @@ export default function App() {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
                     {liveOrders.map((ord) => {
                       const tone = orderTone(ord.status);
+                      const wait = ord.status !== 'Selesai' && ord.created_at ? getWaitInfo(ord.created_at, nowTick) : null;
                       return (
                         <div
                           key={ord.id}
-                          className={`relative overflow-hidden bg-zinc-900 rounded-2xl border shadow-sm flex flex-col justify-between transition duration-200 hover:shadow-md mk-rise ${tone.card}`}
+                          className={`relative overflow-hidden bg-zinc-900 rounded-2xl border shadow-sm flex flex-col justify-between transition duration-200 hover:shadow-md mk-rise ${tone.card} ${wait && wait.tone === 'late' ? 'ring-1 ring-rose-500/40' : ''}`}
                         >
                           <span className={`absolute left-0 top-0 bottom-0 w-1 ${tone.bar}`} />
                           <div className="p-4 sm:p-5 pl-5 sm:pl-6">
@@ -1237,6 +1604,12 @@ export default function App() {
                                 <span className="block text-xs font-medium text-zinc-400 mt-0.5">
                                   {ord.table_no} • {ord.customer_name || 'Pelanggan'}
                                 </span>
+                                {wait && (
+                                  <span className={`inline-flex items-center gap-1 mt-1.5 mr-1.5 text-[10px] font-bold px-2 py-0.5 rounded-md ring-1 ring-inset tabular-nums ${waitTone[wait.tone]}`}>
+                                    <Clock className="w-3 h-3" />
+                                    {wait.label}
+                                  </span>
+                                )}
                                 {ord.cashier_name && ord.cashier_name.includes('Self-Order') && (
                                   <span className="inline-block mt-1.5 bg-zinc-800 text-zinc-400 text-[10px] font-semibold px-2 py-0.5 rounded-md">
                                     {ord.cashier_name.includes('Take Away') ? 'Mode Tamu • Take Away' : 'Mode Tamu • Dine-In'}
@@ -1407,7 +1780,7 @@ export default function App() {
                                   <Edit3 className="w-4 h-4" />
                                 </button>
                                 <button
-                                  onClick={() => handleDeleteProduct(prod.id)}
+                                  onClick={() => setDeleteTarget(prod)}
                                   className="inline-flex items-center justify-center p-2 rounded-lg text-rose-500 hover:text-rose-400 hover:bg-rose-500/10 transition active:scale-90"
                                   title="Hapus Menu"
                                 >
@@ -1477,16 +1850,16 @@ export default function App() {
                       <span className="font-semibold text-zinc-50 tabular-nums">{formatRupiah(shiftData.initialFloat)}</span>
                     </div>
                     <div className="flex justify-between py-3 border-b border-zinc-800/70">
-                      <span className="text-zinc-400">Penerimaan kas tunai</span>
-                      <span className="font-semibold text-emerald-400 tabular-nums">+{formatRupiah(shiftData.cashSales)}</span>
+                      <span className="text-zinc-400">Penerimaan kas tunai <span className="text-zinc-600">· {shiftSummary.cashCount} transaksi</span></span>
+                      <span className="font-semibold text-emerald-400 tabular-nums">+{formatRupiah(shiftSummary.cashSales)}</span>
                     </div>
                     <div className="flex justify-between py-3 border-b border-zinc-800/70">
-                      <span className="text-zinc-400">Total transaksi non-tunai</span>
-                      <span className="font-semibold text-sky-400 tabular-nums">{formatRupiah(shiftData.nonCashSales)}</span>
+                      <span className="text-zinc-400">Total transaksi non-tunai <span className="text-zinc-600">· {shiftSummary.nonCashCount} transaksi</span></span>
+                      <span className="font-semibold text-sky-400 tabular-nums">{formatRupiah(shiftSummary.nonCashSales)}</span>
                     </div>
                     <div className="flex justify-between items-center mt-4 py-4 px-4 rounded-2xl bg-amber-500/10 ring-1 ring-inset ring-amber-500/25">
-                      <span className="font-semibold text-amber-300">Target ekspektasi uang di laci</span>
-                      <span className="text-lg font-extrabold text-amber-400 tabular-nums">{formatRupiah(shiftData.expectedCash)}</span>
+                      <span className="font-semibold text-amber-300">Total Uang Di Laci</span>
+                      <span className="text-lg font-extrabold text-amber-400 tabular-nums">{formatRupiah(shiftSummary.expectedCash)}</span>
                     </div>
                   </div>
 
@@ -1500,8 +1873,7 @@ export default function App() {
                       value={shiftData.countedCash}
                       onChange={(e) => {
                         const val = e.target.value;
-                        const diff = val ? Number(val) - shiftData.expectedCash : null;
-                        setShiftData({ ...shiftData, countedCash: val, shiftDiscrepancy: diff });
+                        setShiftData((sd) => ({ ...sd, countedCash: val }));
                       }}
                       className={`${ui.input} text-base font-bold py-3`}
                     />
@@ -1510,28 +1882,73 @@ export default function App() {
                   {shiftData.countedCash && (
                     <div
                       className={`p-4 rounded-2xl text-sm flex items-center justify-between ring-1 ring-inset mk-rise ${
-                        shiftData.shiftDiscrepancy === 0
+                        shiftSummary.discrepancy === 0
                           ? 'bg-emerald-500/10 ring-emerald-500/25 text-emerald-400'
+                          : shiftSummary.discrepancy > 0
+                          ? 'bg-amber-500/10 ring-amber-500/25 text-amber-400'
                           : 'bg-rose-500/10 ring-rose-500/25 text-rose-400'
                       }`}
                     >
-                      <span className="font-semibold">Selisih laci kas</span>
+                      <span className="font-semibold">{shiftSummary.discrepancy > 0 ? 'Kelebihan uang di laci' : shiftSummary.discrepancy < 0 ? 'Kekurangan uang di laci' : 'Selisih laci kas'}</span>
                       <span className="font-extrabold tabular-nums">
-                        {formatRupiah(shiftData.shiftDiscrepancy)}
-                        {shiftData.shiftDiscrepancy === 0 ? ' (Pas)' : ' (Ada selisih)'}
+                        {formatRupiah(Math.abs(shiftSummary.discrepancy))}
+                        {shiftSummary.discrepancy === 0 ? ' (Pas)' : shiftSummary.discrepancy > 0 ? ' (Lebih)' : ' (Kurang)'}
                       </span>
                     </div>
                   )}
 
                   <button
-                    onClick={() => {
-                      alert(`Shift untuk ${activeCashier.name} berhasil ditutup & diarsipkan!`);
-                      setShiftData((s) => ({ ...s, countedCash: '', shiftDiscrepancy: null }));
-                    }}
-                    className={`${ui.btnDark} w-full py-3.5 text-sm`}
+                    onClick={handleCloseShift}
+                    disabled={isSavingShift}
+                    className={`${ui.btnDark} w-full py-3.5 text-sm disabled:opacity-60 disabled:cursor-not-allowed`}
                   >
-                    Tutup Shift & Arsipkan Laporan Kasir
+                    {isSavingShift ? 'Menyimpan laporan…' : 'Tutup Shift & Arsipkan Laporan Kasir'}
                   </button>
+
+                  <div className="pt-5 border-t border-zinc-800/70">
+                    <h4 className="text-sm font-bold text-zinc-50 mb-3">Riwayat Tutup Shift</h4>
+                    {shiftHistoryError ? (
+                      <div className="p-3 rounded-xl bg-amber-500/10 ring-1 ring-inset ring-amber-500/25 text-amber-300 text-xs leading-relaxed">
+                        Riwayat belum bisa dimuat ({shiftHistoryError}). Pastikan tabel <strong>shift_reports</strong> sudah dibuat di Supabase.
+                      </div>
+                    ) : shiftHistory.length === 0 ? (
+                      <p className="text-xs text-zinc-500">Belum ada shift yang ditutup.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {shiftHistory.slice(0, 10).map((h) => {
+                          const d = Number(h.discrepancy) || 0;
+                          return (
+                            <button
+                              key={h.id}
+                              onClick={() => setShiftReport({ ...h, saved: true })}
+                              className="w-full flex items-center gap-3 p-3 rounded-2xl border border-zinc-800 bg-zinc-800/30 hover:bg-zinc-800 text-left transition duration-150 active:scale-[0.98]"
+                            >
+                              <span className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-400 text-xs font-extrabold flex items-center justify-center shrink-0">
+                                {getInitials(h.cashier_name)}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-sm font-bold text-zinc-100 truncate">{h.cashier_name}</span>
+                                <span className="block text-[11px] text-zinc-500 truncate">
+                                  {new Date(h.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} • {h.shift_name}
+                                </span>
+                              </span>
+                              <span
+                                className={`text-[11px] font-bold px-2.5 py-1 rounded-full ring-1 ring-inset shrink-0 ${
+                                  d === 0
+                                    ? 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/25'
+                                    : d > 0
+                                    ? 'bg-amber-500/10 text-amber-400 ring-amber-500/25'
+                                    : 'bg-rose-500/10 text-rose-400 ring-rose-500/25'
+                                }`}
+                              >
+                                {d === 0 ? 'Pas' : `${d > 0 ? 'Lebih' : 'Kurang'} ${formatRupiah(Math.abs(d))}`}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -1577,6 +1994,117 @@ export default function App() {
                       {CASHIERS_LIST.length} <span className="text-sm font-semibold text-zinc-500">operator</span>
                     </p>
                     <p className="text-xs text-zinc-400 mt-2">Sistem POS multi-kasir</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <div className={`${ui.card} p-5 lg:col-span-2`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
+                      <div>
+                        <h4 className="font-bold text-zinc-50">Grafik Omzet</h4>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                          {REPORT_RANGES.find((x) => x.k === reportRange).chart}
+                        </p>
+                      </div>
+                      <div className="flex bg-zinc-800 p-1 rounded-xl max-w-full overflow-x-auto">
+                        {REPORT_RANGES.map((t) => (
+                          <button
+                            key={t.k}
+                            onClick={() => setReportRange(t.k)}
+                            className={`px-3 sm:px-3.5 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition duration-150 active:scale-95 ${
+                              reportRange === t.k ? 'bg-zinc-100 text-zinc-900 shadow-sm' : 'text-zinc-400 hover:text-zinc-100'
+                            }`}
+                          >
+                            {t.l}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-3 mb-5">
+                      <div>
+                        <p className="text-[11px] uppercase font-semibold text-zinc-500 tracking-wider">Omzet</p>
+                        <p className="text-base sm:text-lg font-extrabold text-amber-300 tabular-nums mt-0.5">{formatRupiah(reportData.total)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase font-semibold text-zinc-500 tracking-wider">Transaksi</p>
+                        <p className="text-base sm:text-lg font-extrabold text-zinc-50 tabular-nums mt-0.5">{reportData.count}</p>
+                      </div>
+                      <div>
+                        <p className="text-[11px] uppercase font-semibold text-zinc-500 tracking-wider">Rata-rata</p>
+                        <p className="text-base sm:text-lg font-extrabold text-zinc-50 tabular-nums mt-0.5">{formatRupiah(reportData.avg)}</p>
+                      </div>
+                    </div>
+
+                    {reportData.count === 0 ? (
+                      <div className="h-44 flex flex-col items-center justify-center text-center rounded-2xl border border-dashed border-zinc-800 text-zinc-500">
+                        <TrendingUp className="w-6 h-6 mb-2" />
+                        <p className="text-sm font-medium">Belum ada transaksi selesai pada rentang ini</p>
+                      </div>
+                    ) : (
+                      <div className="flex items-end gap-1 sm:gap-1.5 h-44">
+                        {reportData.buckets.map((b, i) => {
+                          const pct = reportData.max ? (b.total / reportData.max) * 100 : 0;
+                          const isPeak = b.total > 0 && b.total === reportData.max;
+                          return (
+                            <div key={i} className="flex-1 min-w-0 h-full flex flex-col items-center justify-end gap-1.5 group" title={`${b.full || b.label} • ${formatRupiah(b.total)} • ${b.count} transaksi`}>
+                              <div className="w-full flex-1 flex items-end">
+                                <div
+                                  className={`w-full rounded-t-md transition-all duration-500 ${
+                                    b.total === 0
+                                      ? 'bg-zinc-800'
+                                      : isPeak
+                                      ? 'bg-gradient-to-t from-amber-600 to-amber-300'
+                                      : 'bg-gradient-to-t from-amber-700/60 to-amber-500/70 group-hover:from-amber-600 group-hover:to-amber-400'
+                                  }`}
+                                  style={{ height: b.total === 0 ? '3px' : `${Math.max(pct, 4)}%` }}
+                                />
+                              </div>
+                              <span className="text-[9px] sm:text-[10px] font-medium text-zinc-500 tabular-nums whitespace-nowrap">
+                                {reportData.buckets.length > 16 && i % 5 !== 0 ? '\u00A0' : b.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={`${ui.card} p-5`}>
+                    <h4 className="font-bold text-zinc-50">Menu Terlaris</h4>
+                    <p className="text-xs text-zinc-400 mt-0.5 mb-4">
+                      {REPORT_RANGES.find((x) => x.k === reportRange).short} • berdasarkan porsi terjual
+                    </p>
+                    {reportData.top.length === 0 ? (
+                      <div className="h-44 flex items-center justify-center text-center text-zinc-500 text-sm rounded-2xl border border-dashed border-zinc-800 px-4">
+                        Belum ada data penjualan
+                      </div>
+                    ) : (
+                      <div className="space-y-3.5">
+                        {reportData.top.map((m, i) => (
+                          <div key={m.name}>
+                            <div className="flex items-center gap-2.5">
+                              <span className={`w-6 h-6 rounded-lg text-[11px] font-extrabold flex items-center justify-center shrink-0 ${
+                                i === 0 ? 'bg-gradient-to-br from-amber-300 to-amber-600 text-zinc-950' : 'bg-zinc-800 text-zinc-400'
+                              }`}>
+                                {i + 1}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-semibold text-zinc-100 truncate">{m.name}</p>
+                                <p className="text-[11px] text-zinc-500 tabular-nums">{formatRupiah(m.revenue)}</p>
+                              </div>
+                              <span className="text-sm font-extrabold text-amber-300 tabular-nums shrink-0">{m.qty}×</span>
+                            </div>
+                            <div className="mt-1.5 h-1 rounded-full bg-zinc-800 overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-amber-500/80 transition-all duration-500"
+                                style={{ width: `${(m.qty / reportData.top[0].qty) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1718,6 +2246,234 @@ export default function App() {
         </div>
       )}
 
+      {/* ============================ MODAL PILIH MEJA ============================ */}
+      {isTableModalOpen && (
+        <div className={ui.overlay} onClick={(e) => { if (e.target === e.currentTarget) setIsTableModalOpen(false); }}>
+          <div className={`${ui.modal} max-w-md`}>
+            <div className={ui.modalHead}>
+              <div>
+                <h3 className="text-base font-bold text-zinc-50">Pilih Meja</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  {currentRole === 'staff' ? 'Status meja diperbarui secara real-time' : 'Pilih meja tempat Anda duduk'}
+                </p>
+              </div>
+              <button onClick={() => setIsTableModalOpen(false)} className={`${ui.iconBtn} p-2`}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 sm:p-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                {tableList.filter((t) => !t.toLowerCase().includes('take away')).map((tbl) => {
+                  const st = currentRole === 'staff' ? tableStatusMap[tbl] : null;
+                  const isReady = st && st.ready;
+                  const isBusy = st && !st.ready;
+                  const selected = selectedTable === tbl;
+                  return (
+                    <button
+                      key={tbl}
+                      onClick={() => { setSelectedTable(tbl); setIsTableModalOpen(false); }}
+                      className={`relative text-left p-3.5 rounded-2xl border transition duration-150 active:scale-95 ${
+                        isReady
+                          ? 'border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/15'
+                          : isBusy
+                          ? 'border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/15'
+                          : 'border-zinc-800 bg-zinc-800/40 hover:bg-zinc-800 hover:border-zinc-700'
+                      } ${selected ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-zinc-900' : ''}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-bold text-zinc-50">{tbl}</span>
+                        <span
+                          className={`w-2.5 h-2.5 rounded-full ${
+                            isReady ? 'bg-emerald-400 animate-pulse' : isBusy ? 'bg-amber-400' : 'bg-zinc-600'
+                          }`}
+                        />
+                      </div>
+                      <p className={`text-[11px] font-semibold mt-1.5 ${isReady ? 'text-emerald-400' : isBusy ? 'text-amber-400' : 'text-zinc-500'}`}>
+                        {currentRole !== 'staff'
+                          ? (selected ? 'Dipilih' : 'Pilih meja')
+                          : isReady
+                          ? 'Siap diantar'
+                          : isBusy
+                          ? `${st.count} pesanan aktif`
+                          : 'Kosong'}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {tableList.filter((t) => t.toLowerCase().includes('take away')).map((tbl) => {
+                const selected = selectedTable === tbl;
+                const st = currentRole === 'staff' ? tableStatusMap[tbl] : null;
+                return (
+                  <button
+                    key={tbl}
+                    onClick={() => { setSelectedTable(tbl); setIsTableModalOpen(false); }}
+                    className={`mt-2.5 w-full flex items-center gap-3 p-3.5 rounded-2xl border text-left transition duration-150 active:scale-[0.98] border-zinc-800 bg-zinc-800/40 hover:bg-zinc-800 ${
+                      selected ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-zinc-900' : ''
+                    }`}
+                  >
+                    <span className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 text-amber-400 flex items-center justify-center shrink-0">
+                      <ShoppingBag className="w-4 h-4" />
+                    </span>
+                    <span className="flex-1">
+                      <span className="block text-sm font-bold text-zinc-50">{tbl}</span>
+                      <span className="block text-[11px] text-zinc-500">
+                        {st ? `${st.count} pesanan aktif` : 'Pesanan dibawa pulang'}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+
+              {currentRole === 'staff' && (
+                <div className="flex items-center justify-center gap-4 mt-5 text-[11px] font-medium text-zinc-500">
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-zinc-600" />Kosong</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-400" />Ada pesanan</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-400" />Siap diantar</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================ MODAL LAPORAN TUTUP SHIFT ============================ */}
+      {shiftReport && (() => {
+        const d = Number(shiftReport.discrepancy) || 0;
+        const rows = [
+          ['Modal kas awal laci', formatRupiah(shiftReport.initial_float), 'text-zinc-50'],
+          [`Penerimaan kas tunai · ${shiftReport.cash_count} transaksi`, `+${formatRupiah(shiftReport.cash_sales)}`, 'text-emerald-400'],
+          [`Transaksi non-tunai · ${shiftReport.non_cash_count} transaksi`, formatRupiah(shiftReport.non_cash_sales), 'text-sky-400'],
+          ['Target uang di laci', formatRupiah(shiftReport.expected_cash), 'text-amber-400'],
+          ['Uang fisik di laci', formatRupiah(shiftReport.counted_cash), 'text-zinc-50'],
+        ];
+        return (
+          <div className={ui.overlay} onClick={(e) => { if (e.target === e.currentTarget) setShiftReport(null); }}>
+            <div className={`${ui.modal} max-w-md`}>
+              <div className={ui.modalHead}>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/25 flex items-center justify-center">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-zinc-50">Laporan Tutup Shift</h3>
+                    <p className="text-xs text-emerald-400 font-semibold">Tersimpan</p>
+                  </div>
+                </div>
+                <button onClick={() => setShiftReport(null)} className={`${ui.iconBtn} p-2`}>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-5 sm:p-6 space-y-5">
+                <div className="grid grid-cols-2 gap-4 bg-zinc-800/40 p-4 rounded-2xl border border-zinc-800">
+                  <div>
+                    <span className="block text-[11px] uppercase font-semibold tracking-wider text-zinc-500">Kasir</span>
+                    <span className="block text-sm font-bold text-zinc-50 mt-1">{shiftReport.cashier_name}</span>
+                  </div>
+                  <div>
+                    <span className="block text-[11px] uppercase font-semibold tracking-wider text-zinc-500">Shift</span>
+                    <span className="block text-sm font-bold text-zinc-50 mt-1">{shiftReport.shift_name}</span>
+                    <span className="block text-xs text-zinc-500">{shiftReport.start_time} s.d. {shiftReport.end_time}</span>
+                  </div>
+                  <div className="col-span-2 text-xs text-zinc-500">
+                    Ditutup {new Date(shiftReport.created_at).toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' })}
+                  </div>
+                </div>
+
+                <div className="text-sm">
+                  {rows.map(([label, value, color]) => (
+                    <div key={label} className="flex justify-between gap-3 py-2.5 border-b border-zinc-800/70">
+                      <span className="text-zinc-400">{label}</span>
+                      <span className={`font-semibold tabular-nums shrink-0 ${color}`}>{value}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div
+                  className={`p-4 rounded-2xl text-sm flex items-center justify-between ring-1 ring-inset ${
+                    d === 0
+                      ? 'bg-emerald-500/10 ring-emerald-500/25 text-emerald-400'
+                      : d > 0
+                      ? 'bg-amber-500/10 ring-amber-500/25 text-amber-400'
+                      : 'bg-rose-500/10 ring-rose-500/25 text-rose-400'
+                  }`}
+                >
+                  <span className="font-semibold">{d === 0 ? 'Kas pas' : d > 0 ? 'Kelebihan uang di laci' : 'Kekurangan uang di laci'}</span>
+                  <span className="font-extrabold tabular-nums">
+                    {d === 0 ? formatRupiah(0) : formatRupiah(Math.abs(d))}
+                  </span>
+                </div>
+
+                <button onClick={() => setShiftReport(null)} className={`${ui.btnSecondary} w-full py-3 text-sm`}>
+                  Tutup
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ============================ DIALOG HAPUS MENU ============================ */}
+      {deleteTarget && (
+        <div className={ui.overlay} onClick={(e) => { if (e.target === e.currentTarget) setDeleteTarget(null); }}>
+          <div className={`${ui.modal} max-w-sm p-6 text-center`}>
+            <div className="w-14 h-14 rounded-2xl bg-rose-500/10 text-rose-400 ring-8 ring-rose-500/5 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-extrabold text-zinc-50 mt-4">Hapus menu?</h3>
+            <p className="text-sm text-zinc-400 mt-2 leading-relaxed">
+              <strong className="text-zinc-100">{deleteTarget.name}</strong> akan dihapus dari katalog dan keranjang. Tindakan ini tidak dapat dibatalkan.
+            </p>
+            <div className="grid grid-cols-2 gap-2 mt-6">
+              <button onClick={() => setDeleteTarget(null)} className={`${ui.btnSecondary} py-3 text-sm`}>
+                Batal
+              </button>
+              <button
+                onClick={() => {
+                  const target = deleteTarget;
+                  setDeleteTarget(null);
+                  handleDeleteProduct(target.id);
+                  setToast({ type: 'success', title: 'Menu dihapus', message: `${target.name} sudah dihapus dari katalog.` });
+                }}
+                className="inline-flex items-center justify-center gap-2 py-3 text-sm bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl shadow-sm shadow-rose-600/25 transition duration-150 active:scale-[0.97]"
+              >
+                <Trash2 className="w-4 h-4" />
+                Hapus
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================ TOAST NOTIFIKASI ============================ */}
+      {toast && (() => {
+        const tones = {
+          success: { box: 'bg-emerald-950/90 border-emerald-500/40', icon: 'bg-emerald-500/20 text-emerald-400', title: 'text-emerald-300' },
+          error: { box: 'bg-rose-950/90 border-rose-500/40', icon: 'bg-rose-500/20 text-rose-400', title: 'text-rose-300' },
+          info: { box: 'bg-zinc-900/95 border-amber-500/40', icon: 'bg-amber-500/20 text-amber-400', title: 'text-amber-300' },
+        };
+        const t = tones[toast.type] || tones.info;
+        return (
+          <div
+            role="status"
+            aria-live="polite"
+            onClick={() => setToast(null)}
+            className={`mk-toast fixed top-4 left-1/2 z-[70] w-[calc(100%-2rem)] max-w-sm cursor-pointer flex items-start gap-3 p-3.5 pr-4 rounded-2xl border backdrop-blur-xl shadow-2xl shadow-black/50 ${t.box}`}
+          >
+            <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${t.icon}`}>
+              {toast.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : toast.type === 'error' ? <AlertCircle className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className={`text-sm font-bold ${t.title}`}>{toast.title}</p>
+              <p className="text-xs text-zinc-300 mt-0.5 leading-relaxed">{toast.message}</p>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ============================ MODAL LOGIN ============================ */}
       {isLoginModalOpen && (
         <div className={ui.overlay}>
@@ -1727,7 +2483,9 @@ export default function App() {
                 <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 ring-1 ring-inset ring-amber-500/25 flex items-center justify-center">
                   <Lock className="w-4 h-4" />
                 </div>
-                <h3 className="text-base font-bold text-zinc-50">Otorisasi Staff POS</h3>
+                <h3 className="text-base font-bold text-zinc-50">
+                  {loginStep === 'pick' ? 'Masuk sebagai Kasir' : 'Masukkan PIN'}
+                </h3>
               </div>
               <button
                 onClick={() => { setIsLoginModalOpen(false); setPinError(''); setPinInput(''); }}
@@ -1737,85 +2495,125 @@ export default function App() {
               </button>
             </div>
 
-            <form onSubmit={handleStrictLogin} className="p-5 sm:p-6 space-y-4">
-              <div>
-                <label className={ui.label}>Pilih nama operator kasir</label>
-                <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
-                  {CASHIERS_LIST.map((c) => (
-                    <div
-                      key={c.id}
-                      onClick={() => {
-                        setSelectedCashierLogin(c);
-                        setPinInput('');
-                        setPinError('');
-                      }}
-                      className={`px-3.5 py-2.5 rounded-xl border text-sm flex items-center justify-between cursor-pointer transition duration-150 active:scale-[0.98] ${
-                        selectedCashierLogin.id === c.id
-                          ? 'border-amber-500 bg-amber-500/10 font-semibold text-amber-300 ring-4 ring-amber-500/10'
-                          : 'border-zinc-800 bg-zinc-900 hover:bg-zinc-800/60 text-zinc-300'
-                      }`}
-                    >
-                      <span>{c.name}</span>
-                      {selectedCashierLogin.id === c.id && <CheckCircle2 className="w-4 h-4 text-amber-400" />}
-                    </div>
-                  ))}
-                </div>
+            <div className="p-5 sm:p-6">
+              <div className="flex justify-center gap-1.5 mb-5">
+                <span className="h-1 w-7 rounded-full bg-amber-500 transition-colors" />
+                <span className={`h-1 w-7 rounded-full transition-colors ${loginStep === 'pin' ? 'bg-amber-500' : 'bg-zinc-700'}`} />
               </div>
 
-              <div>
-                <label className="block text-[11px] font-semibold text-zinc-400 mb-2 text-center uppercase tracking-wider">
-                  PIN {selectedCashierLogin.name.split(' ')[0]}
-                </label>
-                <input
-                  type="password"
-                  maxLength={4}
-                  autoFocus
-                  placeholder="••••"
-                  value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
-                  className="w-full text-center tracking-[0.9em] text-2xl font-extrabold bg-zinc-800/40 border border-zinc-800 rounded-2xl py-3 text-zinc-50 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10"
-                />
-              </div>
-
-              {pinError && (
-                <div className="p-3 rounded-xl bg-rose-500/10 ring-1 ring-inset ring-rose-500/25 text-rose-400 text-xs font-semibold flex items-center gap-2 mk-rise">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{pinError}</span>
+              {loginStep === 'pick' ? (
+                <div className="mk-rise">
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 mb-3">
+                    Langkah 1 · Siapa yang bertugas?
+                  </p>
+                  <div className="space-y-2">
+                    {CASHIERS_LIST.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCashierLogin(c);
+                          setPinInput('');
+                          setPinError('');
+                          setLoginStep('pin');
+                        }}
+                        className={`w-full flex items-center gap-3 p-3 rounded-2xl border text-left transition duration-150 active:scale-[0.98] ${
+                          selectedCashierLogin.id === c.id
+                            ? 'border-amber-500/50 bg-amber-500/10'
+                            : 'border-zinc-800 bg-zinc-800/40 hover:bg-zinc-800 hover:border-zinc-700'
+                        }`}
+                      >
+                        <span className="w-9 h-9 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-400 text-xs font-extrabold flex items-center justify-center shrink-0">
+                          {getInitials(c.name)}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-bold text-zinc-100 truncate">{c.name}</span>
+                          <span className="block text-[11px] text-zinc-500">{c.role}</span>
+                        </span>
+                        <ArrowRight className="w-4 h-4 text-zinc-600 shrink-0" />
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-2">
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'OK'].map((keyVal) => (
+              ) : (
+                <form onSubmit={handleStrictLogin} className="mk-rise">
                   <button
-                    key={keyVal}
                     type="button"
-                    onClick={() => {
-                      if (keyVal === 'C') {
-                        setPinInput('');
-                        setPinError('');
-                      } else if (keyVal === 'OK') {
-                        handleStrictLogin();
-                      } else if (pinInput.length < 4) {
-                        setPinInput((p) => p + keyVal.toString());
-                      }
-                    }}
-                    className={`py-3 rounded-xl font-bold text-sm transition duration-100 active:scale-90 ${
-                      keyVal === 'OK'
-                        ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 ring-1 ring-inset ring-amber-500/25'
-                        : keyVal === 'C'
-                        ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 ring-1 ring-inset ring-rose-500/25'
-                        : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100'
-                    }`}
+                    onClick={() => { setLoginStep('pick'); setPinInput(''); setPinError(''); }}
+                    className="text-xs font-semibold text-zinc-400 hover:text-zinc-100 transition mb-4"
                   >
-                    {keyVal}
+                    ‹ Ganti kasir
                   </button>
-                ))}
-              </div>
 
-              <button type="submit" className={`${ui.btnPrimary} w-full py-3.5 text-sm`}>
-                Otorisasi & Masuk POS
-              </button>
-            </form>
+                  <div className="flex flex-col items-center text-center mb-5">
+                    <span className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-300 to-amber-600 text-zinc-950 text-lg font-extrabold flex items-center justify-center mb-3 shadow-lg shadow-amber-500/20">
+                      {getInitials(selectedCashierLogin.name)}
+                    </span>
+                    <p className="text-base font-bold text-zinc-50">{selectedCashierLogin.name}</p>
+                    <p className="text-xs text-zinc-500">{selectedCashierLogin.role} POS</p>
+                  </div>
+
+                  <input
+                    type="password"
+                    inputMode="none"
+                    maxLength={4}
+                    autoFocus
+                    aria-label={`PIN ${selectedCashierLogin.name}`}
+                    value={pinInput}
+                    onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
+                    className="sr-only"
+                  />
+
+                  <div className="flex justify-center gap-3.5 mb-5">
+                    {[0, 1, 2, 3].map((i) => (
+                      <span
+                        key={i}
+                        className={`w-3.5 h-3.5 rounded-full border-2 transition duration-150 ${
+                          pinInput.length > i
+                            ? 'bg-amber-400 border-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.5)] scale-110'
+                            : 'border-zinc-600'
+                        }`}
+                      />
+                    ))}
+                  </div>
+
+                  {pinError && (
+                    <div className="mb-4 p-3 rounded-xl bg-rose-500/10 ring-1 ring-inset ring-rose-500/25 text-rose-400 text-xs font-semibold flex items-center gap-2 mk-rise">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{pinError}</span>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 'C', 0, 'OK'].map((keyVal) => (
+                      <button
+                        key={keyVal}
+                        type="button"
+                        onClick={() => {
+                          if (keyVal === 'C') {
+                            setPinInput('');
+                            setPinError('');
+                          } else if (keyVal === 'OK') {
+                            handleStrictLogin();
+                          } else if (pinInput.length < 4) {
+                            setPinInput((p) => p + keyVal.toString());
+                          }
+                        }}
+                        className={`h-12 rounded-2xl font-bold text-base transition duration-100 active:scale-90 ${
+                          keyVal === 'OK'
+                            ? 'bg-gradient-to-br from-amber-300 to-amber-500 text-zinc-950 text-sm shadow-md shadow-amber-500/20'
+                            : keyVal === 'C'
+                            ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 ring-1 ring-inset ring-rose-500/25 text-sm'
+                            : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700/60'
+                        }`}
+                      >
+                        {keyVal === 'C' ? 'Hapus' : keyVal === 'OK' ? 'Masuk' : keyVal}
+                      </button>
+                    ))}
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1885,13 +2683,13 @@ export default function App() {
               </div>
 
               <div>
-                <label className={ui.label}>Target ekspektasi kas di laci (expected cash)</label>
-                <input
-                  type="number"
-                  value={tempShiftForm.expectedCash}
-                  onChange={(e) => setTempShiftForm({ ...tempShiftForm, expectedCash: e.target.value })}
-                  className={`${ui.input} font-bold text-amber-400`}
-                />
+                <label className={ui.label}>Target ekspektasi kas di laci (otomatis)</label>
+                <div className={`${ui.input} font-bold text-amber-400 !bg-zinc-800/40 cursor-not-allowed`}>
+                  {formatRupiah(shiftSummary.expectedCash)}
+                </div>
+                <p className="text-[11px] text-zinc-500 mt-1.5">
+                  Dihitung otomatis: modal awal + penerimaan kas tunai shift ini.
+                </p>
               </div>
 
               <div className="pt-1 flex gap-2">
@@ -1932,7 +2730,7 @@ export default function App() {
                     onClick={() => {
                       setSelectedTable(`${selectedTable} + ${tbl}`);
                       setIsMergeTableModalOpen(false);
-                      alert(`Berhasil menggabungkan tagihan ${tbl} ke ${selectedTable}!`);
+                      setToast({ type: 'success', title: 'Meja digabung', message: `Tagihan ${tbl} digabung ke ${selectedTable}.` });
                     }}
                     className="p-3.5 bg-zinc-900 border border-zinc-800 hover:border-amber-500 hover:bg-amber-500/10 rounded-xl text-sm font-semibold text-zinc-300 hover:text-amber-300 text-left transition active:scale-[0.97]"
                   >
