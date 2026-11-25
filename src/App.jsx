@@ -1126,7 +1126,7 @@ export default function App() {
 
                 {/* Panel keranjang desktop */}
                 <aside className="hidden lg:flex flex-col w-[380px] shrink-0">
-                  <div className={`${ui.card} sticky top-36 flex flex-col h-[calc(100vh-10rem)] shadow-lg shadow-zinc-900/5`}>
+                  <div className={`${ui.card} flex flex-col shadow-lg shadow-black/30`}>
                     <div className="px-5 py-4 border-b border-zinc-800/70 flex items-center justify-between">
                       <div>
                         <div className="flex items-center gap-2">
@@ -1164,7 +1164,7 @@ export default function App() {
                       />
                     </div>
 
-                    <div className="flex-1 overflow-y-auto px-5 pb-4 space-y-2.5">
+                    <div className="px-5 pb-4 space-y-2.5">
                       {cart.length === 0 ? (
                         <div className="h-full flex flex-col items-center justify-center text-center p-6 text-zinc-400">
                           <div className="w-16 h-16 rounded-2xl bg-zinc-800 flex items-center justify-center text-zinc-500 mb-4">
